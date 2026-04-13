@@ -34,6 +34,7 @@ impl OpenAiClient {
         }
     }
 
+    #[allow(dead_code)] // used in #[cfg(test)] blocks
     pub(crate) fn with_base_url(api_key: String, base_url: String) -> Self {
         Self {
             api_key,
@@ -351,7 +352,7 @@ mod tests {
         let mock_body = "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n\
                          data: {bad json\n\n";
 
-        let mock = server.mock("POST", "/chat/completions")
+        let _mock = server.mock("POST", "/chat/completions")
             .with_status(200)
             .with_header("content-type", "text/event-stream")
             .with_body(mock_body)

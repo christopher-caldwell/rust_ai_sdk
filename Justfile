@@ -23,6 +23,3 @@ test:
 # Format and lint the codebase
 lint: fmt clippy
 
-# Run the generate example
-example-generate:
-    set -a && . examples/.env && set +a && cargo run --example generate

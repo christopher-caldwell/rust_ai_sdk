@@ -1,0 +1,9 @@
+set dotenv-load
+
+# Run the generate example
+generate:
+	cargo run --bin generate
+
+# Run the stream example
+stream:
+	cargo run --bin stream

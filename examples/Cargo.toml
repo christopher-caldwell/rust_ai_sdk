@@ -1,0 +1,17 @@
+[package]
+name = "examples"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ai_sdk = { path = ".." }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+futures-util = "0.3"
+
+[[bin]]
+name = "generate"
+path = "src/generate.rs"
+
+[[bin]]
+name = "stream"
+path = "src/stream.rs"

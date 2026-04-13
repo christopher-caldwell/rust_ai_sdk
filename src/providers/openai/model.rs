@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 use crate::core::{
     error::SdkError, model::LanguageModel, request::TextRequest, result::TextResult,
+    stream::TextEventStream,
 };
 
 use super::client::OpenAiClient;
@@ -24,6 +25,10 @@ impl OpenAiChatModel {
 impl LanguageModel for OpenAiChatModel {
     async fn generate(&self, request: TextRequest) -> Result<TextResult, SdkError> {
         self.client.generate(&self.model, &request).await
+    }
+
+    async fn stream(&self, request: TextRequest) -> Result<TextEventStream, SdkError> {
+        self.client.stream(&self.model, &request).await
     }
 
     fn model_id(&self) -> &str {

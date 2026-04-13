@@ -16,6 +16,8 @@ pub(super) struct ChatCompletionRequest {
     pub max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,12 +63,35 @@ pub(super) struct OpenAiErrorDetail {
     pub message: String,
 }
 
-pub(super) fn text_request_to_openai(model: &str, request: &TextRequest) -> ChatCompletionRequest {
+#[derive(Debug, Deserialize)]
+pub(super) struct ChatCompletionChunk {
+    pub id: Option<String>,
+    pub model: Option<String>,
+    #[serde(default)]
+    pub choices: Vec<ChunkChoice>,
+    pub usage: Option<UsageBody>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ChunkChoice {
+    pub delta: ChunkDelta,
+    #[serde(default)]
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub(super) struct ChunkDelta {
+    pub content: Option<String>,
+}
+
+
+pub(super) fn text_request_to_openai(model: &str, request: &TextRequest, stream_mode: bool) -> ChatCompletionRequest {
     ChatCompletionRequest {
         model: model.to_string(),
         messages: request.messages.iter().map(message_to_chat).collect(),
         max_tokens: request.max_output_tokens,
         temperature: request.temperature,
+        stream: if stream_mode { Some(true) } else { None },
     }
 }
 

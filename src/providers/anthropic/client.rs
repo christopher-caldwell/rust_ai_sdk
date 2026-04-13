@@ -3,7 +3,9 @@ use crate::core::{error::SdkError, request::TextRequest, result::TextResult};
 use super::{
     error::{AnthropicClientError, truncate_body},
     types::{
-        AnthropicErrorResponse, AnthropicResponse, AnthropicStreamEvent,
+        AnthropicErrorResponse, AnthropicResponse,
+        ContentBlockDeltaEvent, ErrorEvent, EventEnvelope,
+        MessageDeltaEvent, MessageStartEvent,
         anthropic_response_to_text_result, text_request_to_anthropic, map_stop_reason,
     },
 };
@@ -121,12 +123,7 @@ impl AnthropicClient {
             .bytes_stream()
             .eventsource()
             .map(move |result| match result {
-                Ok(event) => {
-                    match serde_json::from_str::<AnthropicStreamEvent>(&event.data) {
-                        Ok(anthropic_event) => process_event(anthropic_event, &mut acc),
-                        Err(e) => vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
-                    }
-                }
+                Ok(event) => process_event(&event.data, &mut acc),
                 Err(e) => vec![Err(SdkError::Api(format!("EventSource stream error: {}", e)))],
             })
             .flat_map(futures_util::stream::iter);
@@ -149,35 +146,60 @@ struct StreamAccumulator {
 }
 
 fn process_event(
-    event: AnthropicStreamEvent,
+    data: &str,
     acc: &mut StreamAccumulator,
 ) -> Vec<Result<StreamEvent, SdkError>> {
-    let mut events = Vec::new();
+    // Step 1: read just the type tag — fail only on total JSON chaos.
+    let envelope: EventEnvelope = match serde_json::from_str(data) {
+        Ok(e) => e,
+        Err(e) => return vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
+    };
 
-    match event {
-        AnthropicStreamEvent::MessageStart { message } => {
-            acc.id = message.id;
-            acc.model = message.model;
-            if let Some(usage) = message.usage {
-                acc.input_tokens = usage.input_tokens;
-            }
-        }
-        AnthropicStreamEvent::ContentBlockDelta { delta, .. } => {
-            if let Some(text) = delta.text {
-                if !text.is_empty() {
-                    events.push(Ok(StreamEvent::TextDelta(text)));
+    match envelope.event_type.as_str() {
+        "message_start" => {
+            match serde_json::from_str::<MessageStartEvent>(data) {
+                Ok(evt) => {
+                    acc.id = evt.message.id;
+                    acc.model = evt.message.model;
+                    if let Some(usage) = evt.message.usage {
+                        acc.input_tokens = usage.input_tokens;
+                    }
+                    vec![]
                 }
+                Err(e) => vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
             }
         }
-        AnthropicStreamEvent::MessageDelta { delta, usage } => {
-            if let Some(reason) = &delta.stop_reason {
-                acc.finish_reason = Some(map_stop_reason(reason));
-            }
-            if let Some(usage) = usage {
-                acc.output_tokens = usage.output_tokens;
+
+        "content_block_delta" => {
+            match serde_json::from_str::<ContentBlockDeltaEvent>(data) {
+                Ok(evt) => {
+                    if let Some(text) = evt.delta.text {
+                        if !text.is_empty() {
+                            return vec![Ok(StreamEvent::TextDelta(text))];
+                        }
+                    }
+                    vec![]
+                }
+                Err(e) => vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
             }
         }
-        AnthropicStreamEvent::MessageStop => {
+
+        "message_delta" => {
+            match serde_json::from_str::<MessageDeltaEvent>(data) {
+                Ok(evt) => {
+                    if let Some(reason) = &evt.delta.stop_reason {
+                        acc.finish_reason = Some(map_stop_reason(reason));
+                    }
+                    if let Some(usage) = evt.usage {
+                        acc.output_tokens = usage.output_tokens;
+                    }
+                    vec![]
+                }
+                Err(e) => vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
+            }
+        }
+
+        "message_stop" => {
             let total_tokens = match (acc.input_tokens, acc.output_tokens) {
                 (Some(i), Some(o)) => Some(i + o),
                 (Some(i), None) => Some(i),
@@ -194,23 +216,31 @@ fn process_event(
             } else {
                 None
             };
-            
-            events.push(Ok(StreamEvent::Finished {
-                finish_reason: acc.finish_reason.clone().unwrap_or_else(|| FinishReason::Other("unknown".to_string())),
+
+            vec![Ok(StreamEvent::Finished {
+                finish_reason: acc
+                    .finish_reason
+                    .clone()
+                    .unwrap_or_else(|| FinishReason::Other("unknown".to_string())),
                 usage,
                 response: ResponseMetadata {
                     id: acc.id.clone(),
                     model: acc.model.clone(),
                 },
-            }));
+            })]
         }
-        AnthropicStreamEvent::Error { error } => {
-            events.push(Err(SdkError::Api(error.message)));
-        }
-        _ => {}
-    }
 
-    events
+        "error" => {
+            match serde_json::from_str::<ErrorEvent>(data) {
+                Ok(evt) => vec![Err(SdkError::Api(evt.error.message))],
+                Err(e) => vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
+            }
+        }
+
+        // All other event types (ping, content_block_start, content_block_stop,
+        // or any future events Anthropic may add) are silently ignored.
+        _ => vec![],
+    }
 }
 
 #[cfg(test)]
@@ -332,7 +362,53 @@ mod tests {
     }
 
     // ------------------------------------------------------------------
-    // Streaming tests
+    // Streaming unit tests — process_event
+    // ------------------------------------------------------------------
+
+    /// Unknown event types must be silently ignored (no output, no error).
+    #[test]
+    fn test_process_event_unknown_type_ignored() {
+        let mut acc = StreamAccumulator::default();
+        // "future_event" is not a recognized type
+        let data = r#"{"type":"future_event","some_field":"some_value"}"#;
+        let result = process_event(data, &mut acc);
+        assert!(result.is_empty(), "Unknown event should produce no output");
+    }
+
+    /// A recognized event type with malformed payload must produce exactly one
+    /// `SdkError::Serde` error.
+    #[test]
+    fn test_process_event_malformed_known_type_errors() {
+        let mut acc = StreamAccumulator::default();
+        // `content_block_delta` recognized, but `delta` field is missing
+        let data = r#"{"type":"content_block_delta","index":0}"#;
+        let result = process_event(data, &mut acc);
+        assert_eq!(result.len(), 1);
+        assert!(
+            matches!(&result[0], Err(SdkError::Serialization(_))),
+            "Expected SdkError::Serde, got {:?}",
+            result[0]
+        );
+    }
+
+    /// `ping` and `content_block_start` / `content_block_stop` should also be
+    /// silently ignored (they are well-known Anthropic event types that we don't
+    /// need to process, but must not error on).
+    #[test]
+    fn test_process_event_known_passthrough_types_ignored() {
+        let mut acc = StreamAccumulator::default();
+        for data in [
+            r#"{"type":"ping"}"#,
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+            r#"{"type":"content_block_stop","index":0}"#,
+        ] {
+            let result = process_event(data, &mut acc);
+            assert!(result.is_empty(), "Event {:?} should produce no output", data);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Streaming integration tests
     // ------------------------------------------------------------------
 
     #[tokio::test]
@@ -355,9 +431,13 @@ mod tests {
     async fn test_stream_success() {
         let mut server = mockito::Server::new_async().await;
 
+        // The SSE body includes a `ping` event and a `content_block_start` to
+        // verify that unhandled-but-known events are silently skipped.
         let mock_body = concat!(
             "event: message_start\n",
             "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_123\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-3-5-sonnet\",\"usage\":{\"input_tokens\":10}}}\n\n",
+            "event: ping\n",
+            "data: {\"type\":\"ping\"}\n\n",
             "event: content_block_start\n",
             "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
             "event: content_block_delta\n",

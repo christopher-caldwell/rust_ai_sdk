@@ -63,26 +63,21 @@ pub(super) struct AnthropicErrorDetail {
     pub error_type: String,
 }
 
-// Stream chunk types
+// ---------------------------------------------------------------------------
+// Stream event types — envelope-first, forward-compatible
+// ---------------------------------------------------------------------------
+
+/// Minimal envelope used to read the `type` field before full deserialization.
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-pub(super) enum AnthropicStreamEvent {
-    #[serde(rename = "message_start")]
-    MessageStart { message: MessageStartBody },
-    #[serde(rename = "content_block_start")]
-    ContentBlockStart { #[allow(dead_code)] index: u32, #[allow(dead_code)] content_block: AnthropicContentBlock },
-    #[serde(rename = "content_block_delta")]
-    ContentBlockDelta { #[allow(dead_code)] index: u32, delta: AnthropicContentDelta },
-    #[serde(rename = "content_block_stop")]
-    ContentBlockStop { #[allow(dead_code)] index: u32 },
-    #[serde(rename = "message_delta")]
-    MessageDelta { delta: MessageDeltaBody, usage: Option<AnthropicUsage> },
-    #[serde(rename = "message_stop")]
-    MessageStop,
-    #[serde(rename = "ping")]
-    Ping,
-    #[serde(rename = "error")]
-    Error { error: AnthropicErrorDetail },
+pub(super) struct EventEnvelope {
+    #[serde(rename = "type")]
+    pub event_type: String,
+}
+
+/// `message_start` — carries message metadata and initial usage.
+#[derive(Debug, Deserialize)]
+pub(super) struct MessageStartEvent {
+    pub message: MessageStartBody,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,17 +87,34 @@ pub(super) struct MessageStartBody {
     pub usage: Option<AnthropicUsage>,
 }
 
+/// `content_block_delta` — carries a text (or other) delta.
 #[derive(Debug, Deserialize)]
-pub(super) struct AnthropicContentDelta {
-    #[serde(rename = "type")]
-    #[allow(dead_code)]
-    pub delta_type: String,
+pub(super) struct ContentBlockDeltaEvent {
+    pub delta: ContentDelta,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct ContentDelta {
+    #[serde(default)]
     pub text: Option<String>,
+}
+
+/// `message_delta` — carries stop_reason and output usage.
+#[derive(Debug, Deserialize)]
+pub(super) struct MessageDeltaEvent {
+    pub delta: MessageDeltaBody,
+    pub usage: Option<AnthropicUsage>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(super) struct MessageDeltaBody {
     pub stop_reason: Option<String>,
+}
+
+/// `error` — carries an Anthropic error payload.
+#[derive(Debug, Deserialize)]
+pub(super) struct ErrorEvent {
+    pub error: AnthropicErrorDetail,
 }
 
 pub(super) fn text_request_to_anthropic(model: &str, request: &TextRequest, stream_mode: bool) -> AnthropicRequest {

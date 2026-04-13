@@ -91,18 +91,16 @@ pub(super) fn map_finish_reason(finish_reason: &str) -> FinishReason {
     }
 }
 
-pub(super) fn chat_response_to_text_result(resp: ChatCompletionResponse) -> Result<TextResult, SdkError> {
+pub(super) fn chat_response_to_text_result(
+    resp: ChatCompletionResponse,
+) -> Result<TextResult, SdkError> {
     let Some(choice) = resp.choices.first() else {
         return Err(SdkError::Api(
             "OpenAI response contained no choices".to_string(),
         ));
     };
 
-    let text = choice
-        .message
-        .content
-        .clone()
-        .unwrap_or_default();
+    let text = choice.message.content.clone().unwrap_or_default();
     let finish_reason = choice
         .finish_reason
         .as_deref()

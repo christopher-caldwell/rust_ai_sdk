@@ -1,10 +1,7 @@
 use async_trait::async_trait;
 
 use crate::core::{
-    error::SdkError,
-    model::LanguageModel,
-    request::TextRequest,
-    result::TextResult,
+    error::SdkError, model::LanguageModel, request::TextRequest, result::TextResult,
 };
 
 use super::client::OpenAiClient;

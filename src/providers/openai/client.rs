@@ -1,10 +1,10 @@
 use crate::core::{error::SdkError, request::TextRequest, result::TextResult};
 
 use super::{
-    error::{truncate_body, OpenAiClientError},
+    error::{OpenAiClientError, truncate_body},
     types::{
-        text_request_to_openai, ChatCompletionResponse, OpenAiErrorBody,
-        chat_response_to_text_result,
+        ChatCompletionResponse, OpenAiErrorBody, chat_response_to_text_result,
+        text_request_to_openai,
     },
 };
 
@@ -58,10 +58,7 @@ impl OpenAiClient {
                     err.error.message, status
                 )));
             }
-            return Err(SdkError::Http(format!(
-                "HTTP {}: {}",
-                status, snippet
-            )));
+            return Err(SdkError::Http(format!("HTTP {}: {}", status, snippet)));
         }
 
         let parsed: ChatCompletionResponse = serde_json::from_slice(&bytes)

@@ -1,8 +1,5 @@
 use crate::core::{
-    error::SdkError,
-    model::LanguageModel,
-    request::TextRequest,
-    result::TextResult,
+    error::SdkError, model::LanguageModel, request::TextRequest, result::TextResult,
 };
 
 pub async fn generate_text<M: LanguageModel + ?Sized>(

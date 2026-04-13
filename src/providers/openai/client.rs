@@ -120,8 +120,8 @@ impl OpenAiClient {
         }
 
         // Per-stream mutable state accumulated across chunks.
-        // We use a plain struct in a Cell because the closure is move-only;
-        // no async wakeups race against this code path.
+        // It is captured directly as a mutable variable by the stream closure;
+        // no interior mutability primitives are needed.
         let mut acc = StreamAccumulator::default();
 
         let stream = response
@@ -166,6 +166,11 @@ impl OpenAiClient {
 // Internal streaming helpers
 // ---------------------------------------------------------------------------
 
+struct PendingFinished {
+    finish_reason: FinishReason,
+    response: ResponseMetadata,
+}
+
 /// Rolling state accumulated across chunks in a single stream response.
 ///
 /// OpenAI frequently sends `id` and `model` only on the first chunk, and
@@ -191,7 +196,7 @@ struct StreamAccumulator {
     /// chunk can update `acc.usage` before we flush it.  The pending event
     /// is flushed the next time `process_chunk` is called without a new
     /// finish_reason, or at `[DONE]`.
-    pending_finished: Option<StreamEvent>,
+    pending_finished: Option<PendingFinished>,
 }
 
 /// Process one parsed `ChatCompletionChunk` and return the stream events to emit.
@@ -231,17 +236,11 @@ fn process_chunk(chunk: ChatCompletionChunk, acc: &mut StreamAccumulator) -> Vec
     // carries updated usage (or simply is a usage-only chunk arriving after
     // the stop chunk), flush the pending event now with the updated usage.
     if let Some(pending) = acc.pending_finished.take() {
-        // Merge the usage we may have just updated into the pending event.
-        let flushed = if let StreamEvent::Finished { finish_reason, response, .. } = pending {
-            StreamEvent::Finished {
-                finish_reason,
-                usage: acc.usage.clone(),
-                response,
-            }
-        } else {
-            pending
-        };
-        events.push(Ok(flushed));
+        events.push(Ok(StreamEvent::Finished {
+            finish_reason: pending.finish_reason,
+            usage: acc.usage.clone(),
+            response: pending.response,
+        }));
         acc.finished_emitted = true;
     }
 
@@ -259,22 +258,20 @@ fn process_chunk(chunk: ChatCompletionChunk, acc: &mut StreamAccumulator) -> Vec
         }
     }
 
-    // If this chunk carries a finish_reason, build the Finished event but
+    // If this chunk carries a finish_reason, build the pending Finished event but
     // defer emitting it so the usage-only chunk (if any) can arrive first.
     if let Some(reason) = chunk_finish_reason {
-        acc.finish_reason = Some(map_finish_reason(&reason));
+        let finish_reason = map_finish_reason(&reason);
+        acc.finish_reason = Some(finish_reason.clone());
 
-        let deferred = StreamEvent::Finished {
-            finish_reason: map_finish_reason(&reason),
-            // Snapshot usage as of now; may be overwritten after the usage chunk.
-            usage: acc.usage.clone(),
+        // Park the event; it will be flushed on the next chunk or at [DONE].
+        acc.pending_finished = Some(PendingFinished {
+            finish_reason,
             response: ResponseMetadata {
                 id: acc.id.clone(),
                 model: acc.model.clone(),
             },
-        };
-        // Park the event; it will be flushed on the next chunk or at [DONE].
-        acc.pending_finished = Some(deferred);
+        });
     }
 
     events

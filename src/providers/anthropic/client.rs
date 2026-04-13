@@ -117,16 +117,63 @@ impl AnthropicClient {
             return Err(SdkError::Http(format!("HTTP {}: {}", status, snippet)));
         }
 
-        let mut acc = StreamAccumulator::default();
+        let events = Box::pin(response.bytes_stream().eventsource());
 
-        let stream = response
-            .bytes_stream()
-            .eventsource()
-            .map(move |result| match result {
-                Ok(event) => process_event(&event.data, &mut acc),
-                Err(e) => vec![Err(SdkError::Api(format!("EventSource stream error: {}", e)))],
-            })
-            .flat_map(futures_util::stream::iter);
+        let stream = futures_util::stream::unfold(
+            (events, StreamAccumulator::default(), false),
+            |(mut events, mut acc, done)| async move {
+                if done {
+                    return None;
+                }
+
+                match events.next().await {
+                    Some(Ok(event)) => {
+                        let items = process_event(&event.data, &mut acc);
+                        Some((items, (events, acc, false)))
+                    }
+                    Some(Err(e)) => {
+                        let items = vec![Err(SdkError::Api(format!("EventSource stream error: {}", e)))];
+                        Some((items, (events, acc, false)))
+                    }
+                    None => {
+                        let mut items = vec![];
+                        if !acc.finished_emitted {
+                            acc.finished_emitted = true;
+
+                            let total_tokens = match (acc.input_tokens, acc.output_tokens) {
+                                (Some(i), Some(o)) => Some(i + o),
+                                (Some(i), None) => Some(i),
+                                (None, Some(o)) => Some(o),
+                                (None, None) => None,
+                            };
+                            let usage = if acc.input_tokens.is_some() || acc.output_tokens.is_some() {
+                                Some(TokenUsage {
+                                    input_tokens: acc.input_tokens,
+                                    output_tokens: acc.output_tokens,
+                                    total_tokens,
+                                })
+                            } else {
+                                None
+                            };
+
+                            items.push(Ok(StreamEvent::Finished {
+                                finish_reason: acc
+                                    .finish_reason
+                                    .clone()
+                                    .unwrap_or_else(|| FinishReason::Other("unknown".to_string())),
+                                usage,
+                                response: ResponseMetadata {
+                                    id: acc.id.clone(),
+                                    model: acc.model.clone(),
+                                },
+                            }));
+                        }
+                        Some((items, (events, acc, true)))
+                    }
+                }
+            },
+        )
+        .flat_map(futures_util::stream::iter);
 
         Ok(Box::pin(stream))
     }
@@ -143,6 +190,7 @@ struct StreamAccumulator {
     input_tokens: Option<u32>,
     output_tokens: Option<u32>,
     finish_reason: Option<FinishReason>,
+    finished_emitted: bool,
 }
 
 fn process_event(
@@ -200,6 +248,11 @@ fn process_event(
         }
 
         "message_stop" => {
+            if acc.finished_emitted {
+                return vec![];
+            }
+            acc.finished_emitted = true;
+
             let total_tokens = match (acc.input_tokens, acc.output_tokens) {
                 (Some(i), Some(o)) => Some(i + o),
                 (Some(i), None) => Some(i),
@@ -489,5 +542,55 @@ mod tests {
         }
         assert_eq!(text, "Hello");
         assert!(finished);
+    }
+
+    #[tokio::test]
+    async fn test_stream_fallback_finished() {
+        let mut server = mockito::Server::new_async().await;
+
+        // No message_stop event
+        let mock_body = concat!(
+            "event: message_start\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_456\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-3-haiku\",\"usage\":{\"input_tokens\":8}}}\n\n",
+            "event: content_block_start\n",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hi\"}}\n\n",
+            "event: message_delta\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":2}}\n\n"
+        );
+
+        let mock = server.mock("POST", "/messages")
+            .match_header("x-api-key", "test-api-key")
+            .with_status(200)
+            .with_header("content-type", "text/event-stream")
+            .with_body(mock_body)
+            .create_async().await;
+
+        let client = AnthropicClient::with_base_url("test-api-key".to_string(), server.url());
+        let mut stream = client.stream("claude-3-haiku", &test_request()).await.expect("Stream should start");
+        
+        mock.assert_async().await;
+        
+        let mut text = String::new();
+        let mut finished_count = 0;
+
+        while let Some(evt) = stream.next().await {
+            match evt.unwrap() {
+                StreamEvent::TextDelta(d) => text.push_str(&d),
+                StreamEvent::Finished { finish_reason, usage, response } => {
+                    assert!(matches!(finish_reason, FinishReason::Stop));
+                    assert_eq!(response.id.as_deref(), Some("msg_456"));
+                    assert_eq!(response.model.as_deref(), Some("claude-3-haiku"));
+                    let u = usage.expect("usage should be present");
+                    assert_eq!(u.input_tokens, Some(8));
+                    assert_eq!(u.output_tokens, Some(2));
+                    assert_eq!(u.total_tokens, Some(10));
+                    finished_count += 1;
+                }
+            }
+        }
+        assert_eq!(text, "Hi");
+        assert_eq!(finished_count, 1, "Should emit exactly one fallback Finished");
     }
 }

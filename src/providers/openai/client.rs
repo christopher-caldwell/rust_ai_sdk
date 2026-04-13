@@ -11,10 +11,6 @@ use crate::core::stream::{StreamEvent, TextEventStream};
 use crate::core::types::{FinishReason, ResponseMetadata, Usage as TokenUsage};
 use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const ERROR_BODY_SNIPPET_LEN: usize = 512;
@@ -123,11 +119,10 @@ impl OpenAiClient {
             return Err(SdkError::Http(format!("HTTP {}: {}", status, snippet)));
         }
 
-        // Track whether a Finished event has been emitted. This lets us emit
-        // a fallback Finished at [DONE] in case OpenAI ever sends finish_reason
-        // only on the sentinel instead of a prior delta chunk.
-        let finished_emitted = Arc::new(AtomicBool::new(false));
-        let fe = finished_emitted.clone();
+        // Per-stream mutable state accumulated across chunks.
+        // We use a plain struct in a Cell because the closure is move-only;
+        // no async wakeups race against this code path.
+        let mut acc = StreamAccumulator::default();
 
         let stream = response
             .bytes_stream()
@@ -135,52 +130,27 @@ impl OpenAiClient {
             .map(move |result| match result {
                 Ok(event) => {
                     if event.data == "[DONE]" {
-                        // Emit a fallback Finished if the stream closed without one.
-                        if !fe.load(Ordering::Relaxed) {
-                            fe.store(true, Ordering::Relaxed);
+                        // If no Finished has been emitted yet (e.g. finish_reason
+                        // never arrived), emit one now using whatever state we have.
+                        if !acc.finished_emitted {
+                            acc.finished_emitted = true;
                             return vec![Ok(StreamEvent::Finished {
-                                finish_reason: FinishReason::Other("unknown".to_string()),
-                                usage: None,
-                                response: ResponseMetadata { id: None, model: None },
+                                finish_reason: acc
+                                    .finish_reason
+                                    .take()
+                                    .unwrap_or_else(|| FinishReason::Other("unknown".to_string())),
+                                usage: acc.usage.take(),
+                                response: ResponseMetadata {
+                                    id: acc.id.clone(),
+                                    model: acc.model.clone(),
+                                },
                             })];
                         }
                         return vec![];
                     }
+
                     match serde_json::from_str::<ChatCompletionChunk>(&event.data) {
-                        Ok(chunk) => {
-                            let mut events = Vec::new();
-                            // Collect text deltas from all choices first.
-                            let mut chunk_finish_reason: Option<String> = None;
-                            for choice in &chunk.choices {
-                                if let Some(content) = &choice.delta.content {
-                                    events.push(Ok(StreamEvent::TextDelta(content.clone())));
-                                }
-                                // Use the first finish_reason found; ignore subsequent
-                                // choices (n>1 is unsupported in this milestone).
-                                if chunk_finish_reason.is_none() {
-                                    chunk_finish_reason = choice.finish_reason.clone();
-                                }
-                            }
-                            // Construct one Finished per chunk, not one per choice.
-                            // Usage belongs to the chunk, not to any individual choice.
-                            if let Some(reason) = chunk_finish_reason {
-                                let usage = chunk.usage.as_ref().map(|u| TokenUsage {
-                                    input_tokens: u.prompt_tokens,
-                                    output_tokens: u.completion_tokens,
-                                    total_tokens: u.total_tokens,
-                                });
-                                events.push(Ok(StreamEvent::Finished {
-                                    finish_reason: map_finish_reason(&reason),
-                                    usage,
-                                    response: ResponseMetadata {
-                                        id: chunk.id.clone(),
-                                        model: chunk.model.clone(),
-                                    },
-                                }));
-                                fe.store(true, Ordering::Relaxed);
-                            }
-                            events
-                        }
+                        Ok(chunk) => process_chunk(chunk, &mut acc),
                         Err(e) => vec![Err(SdkError::from(OpenAiClientError::Serde(e)))],
                     }
                 }
@@ -192,10 +162,130 @@ impl OpenAiClient {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Internal streaming helpers
+// ---------------------------------------------------------------------------
+
+/// Rolling state accumulated across chunks in a single stream response.
+///
+/// OpenAI frequently sends `id` and `model` only on the first chunk, and
+/// `usage` only on a trailing usage-only chunk (when `include_usage: true`
+/// is requested). We buffer the best-known values here and use them when
+/// constructing the final `Finished` event.
+#[derive(Default)]
+struct StreamAccumulator {
+    /// Last seen response id (often only in the first chunk).
+    id: Option<String>,
+    /// Last seen model name (often only in the first chunk).
+    model: Option<String>,
+    /// Accumulated usage, updated from any chunk that carries a usage field.
+    usage: Option<TokenUsage>,
+    /// The finish_reason observed from a choices entry.
+    finish_reason: Option<FinishReason>,
+    /// Whether a `Finished` event has already been emitted into the stream.
+    finished_emitted: bool,
+    /// A pending `Finished` event whose emission we have deferred.
+    ///
+    /// When a finish_reason chunk arrives we do not emit `Finished`
+    /// immediately; instead we park it here so a subsequent usage-only
+    /// chunk can update `acc.usage` before we flush it.  The pending event
+    /// is flushed the next time `process_chunk` is called without a new
+    /// finish_reason, or at `[DONE]`.
+    pending_finished: Option<StreamEvent>,
+}
+
+/// Process one parsed `ChatCompletionChunk` and return the stream events to emit.
+///
+/// # Ordering note
+/// OpenAI streams chunks in roughly this order (with `include_usage: true`):
+///   1. First chunk: id, model, first delta content
+///   2. Middle chunks: more delta content
+///   3. Stop chunk: finish_reason set, choices may be empty or have empty delta
+///   4. Usage chunk: choices is empty, usage is populated
+///   5. [DONE]
+///
+/// We want the final `Finished` event to carry the usage from chunk 4.
+/// We achieve this by *deferring* the `Finished` event after we observe
+/// finish_reason (step 3), then flushing it in step 4 after we update usage.
+fn process_chunk(chunk: ChatCompletionChunk, acc: &mut StreamAccumulator) -> Vec<Result<StreamEvent, SdkError>> {
+    let mut events: Vec<Result<StreamEvent, SdkError>> = Vec::new();
+
+    // Always update rolling id/model from any chunk that carries them.
+    if let Some(id) = chunk.id {
+        acc.id = Some(id);
+    }
+    if let Some(model) = chunk.model {
+        acc.model = Some(model);
+    }
+
+    // Update rolling usage from this chunk (may be None on most chunks).
+    if let Some(u) = chunk.usage {
+        acc.usage = Some(TokenUsage {
+            input_tokens: u.prompt_tokens,
+            output_tokens: u.completion_tokens,
+            total_tokens: u.total_tokens,
+        });
+    }
+
+    // If we stored a pending Finished from a previous chunk and this chunk
+    // carries updated usage (or simply is a usage-only chunk arriving after
+    // the stop chunk), flush the pending event now with the updated usage.
+    if let Some(pending) = acc.pending_finished.take() {
+        // Merge the usage we may have just updated into the pending event.
+        let flushed = if let StreamEvent::Finished { finish_reason, response, .. } = pending {
+            StreamEvent::Finished {
+                finish_reason,
+                usage: acc.usage.clone(),
+                response,
+            }
+        } else {
+            pending
+        };
+        events.push(Ok(flushed));
+        acc.finished_emitted = true;
+    }
+
+    // Collect text deltas and check for finish_reason across choices.
+    let mut chunk_finish_reason: Option<String> = None;
+    for choice in &chunk.choices {
+        if let Some(content) = &choice.delta.content {
+            if !content.is_empty() {
+                events.push(Ok(StreamEvent::TextDelta(content.clone())));
+            }
+        }
+        // Use the first finish_reason found; n>1 not supported in this milestone.
+        if chunk_finish_reason.is_none() {
+            chunk_finish_reason = choice.finish_reason.clone();
+        }
+    }
+
+    // If this chunk carries a finish_reason, build the Finished event but
+    // defer emitting it so the usage-only chunk (if any) can arrive first.
+    if let Some(reason) = chunk_finish_reason {
+        acc.finish_reason = Some(map_finish_reason(&reason));
+
+        let deferred = StreamEvent::Finished {
+            finish_reason: map_finish_reason(&reason),
+            // Snapshot usage as of now; may be overwritten after the usage chunk.
+            usage: acc.usage.clone(),
+            response: ResponseMetadata {
+                id: acc.id.clone(),
+                model: acc.model.clone(),
+            },
+        };
+        // Park the event; it will be flushed on the next chunk or at [DONE].
+        acc.pending_finished = Some(deferred);
+    }
+
+    events
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::message::{Message, Role};
+    use crate::core::types::FinishReason;
     use mockito;
     use serde_json::json;
 
@@ -209,6 +299,10 @@ mod tests {
             temperature: Some(0.7),
         }
     }
+
+    // ------------------------------------------------------------------
+    // Non-streaming tests
+    // ------------------------------------------------------------------
 
     #[tokio::test]
     async fn test_generate_success() {
@@ -303,13 +397,44 @@ mod tests {
         }
     }
 
+    // ------------------------------------------------------------------
+    // Streaming: setup error
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_stream_setup_error() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server.mock("POST", "/chat/completions")
+            .with_status(401)
+            .with_body("Unauthorized")
+            .create_async().await;
+
+        let client = OpenAiClient::with_base_url("test".to_string(), server.url());
+        let result = client.stream("gpt-4", &test_request()).await;
+
+        mock.assert_async().await;
+
+        // Must be a direct Err, not hidden inside a stream item.
+        assert!(matches!(result, Err(SdkError::Http(_))));
+    }
+
+    // ------------------------------------------------------------------
+    // Streaming: happy path (includes stream_options in request body)
+    // ------------------------------------------------------------------
+
     #[tokio::test]
     async fn test_stream_success() {
         let mut server = mockito::Server::new_async().await;
 
-        let mock_body = "data: {\"id\":\"req_123\",\"model\":\"gpt-4\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n\
-                         data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
-                         data: [DONE]\n\n";
+        // Chunk 1: id + model + text delta
+        // Chunk 2: finish_reason (no id/model — tests metadata carry-forward)
+        // Chunk 3: usage-only trailing chunk
+        let mock_body = concat!(
+            "data: {\"id\":\"req_123\",\"model\":\"gpt-4\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5,\"total_tokens\":15}}\n\n",
+            "data: [DONE]\n\n"
+        );
 
         let mock = server.mock("POST", "/chat/completions")
             .match_header("authorization", "Bearer test-api-key")
@@ -318,7 +443,8 @@ mod tests {
                 "messages": [{"role": "user", "content": "Hello!"}],
                 "max_tokens": 10,
                 "temperature": 0.7,
-                "stream": true
+                "stream": true,
+                "stream_options": {"include_usage": true}
             })))
             .with_status(200)
             .with_header("content-type", "text/event-stream")
@@ -336,8 +462,16 @@ mod tests {
         while let Some(evt) = stream.next().await {
             match evt.unwrap() {
                 StreamEvent::TextDelta(d) => text.push_str(&d),
-                StreamEvent::Finished { finish_reason, .. } => {
-                    assert!(matches!(finish_reason, crate::core::types::FinishReason::Stop));
+                StreamEvent::Finished { finish_reason, usage, response } => {
+                    assert!(matches!(finish_reason, FinishReason::Stop));
+                    // Metadata must be carried forward from chunk 1.
+                    assert_eq!(response.id.as_deref(), Some("req_123"));
+                    assert_eq!(response.model.as_deref(), Some("gpt-4"));
+                    // Usage must arrive from the trailing usage chunk.
+                    let u = usage.expect("usage should be present");
+                    assert_eq!(u.input_tokens, Some(10));
+                    assert_eq!(u.output_tokens, Some(5));
+                    assert_eq!(u.total_tokens, Some(15));
                     finished = true;
                 }
             }
@@ -346,11 +480,180 @@ mod tests {
         assert!(finished);
     }
 
+    // ------------------------------------------------------------------
+    // Streaming: metadata carry-forward
+    // ------------------------------------------------------------------
+
+    /// First chunk carries id/model; the finish chunk does not.
+    /// The emitted Finished must still include id and model.
+    #[tokio::test]
+    async fn test_stream_carries_forward_metadata() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock_body = concat!(
+            "data: {\"id\":\"resp_abc\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let _mock = server.mock("POST", "/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "text/event-stream")
+            .with_body(mock_body)
+            .create_async().await;
+
+        let client = OpenAiClient::with_base_url("test".to_string(), server.url());
+        let mut stream = client.stream("gpt-4o", &test_request()).await.unwrap();
+
+        let mut got_finished = false;
+        while let Some(evt) = stream.next().await {
+            if let Ok(StreamEvent::Finished { response, .. }) = evt {
+                assert_eq!(response.id.as_deref(), Some("resp_abc"), "id should carry forward");
+                assert_eq!(response.model.as_deref(), Some("gpt-4o"), "model should carry forward");
+                got_finished = true;
+            }
+        }
+        assert!(got_finished, "Expected a Finished event");
+    }
+
+    // ------------------------------------------------------------------
+    // Streaming: usage-only trailing chunk updates Finished
+    // ------------------------------------------------------------------
+
+    /// finish_reason arrives before the usage chunk.
+    /// The deferred Finished should be flushed with usage from the trailing chunk.
+    #[tokio::test]
+    async fn test_stream_usage_from_trailing_chunk() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock_body = concat!(
+            "data: {\"id\":\"r1\",\"model\":\"gpt-4\",\"choices\":[{\"delta\":{\"content\":\"Word\"}}]}\n\n",
+            // finish chunk — no usage
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+            // usage-only chunk — no choices
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":3,\"total_tokens\":8}}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let _mock = server.mock("POST", "/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "text/event-stream")
+            .with_body(mock_body)
+            .create_async().await;
+
+        let client = OpenAiClient::with_base_url("test".to_string(), server.url());
+        let mut stream = client.stream("gpt-4", &test_request()).await.unwrap();
+
+        let mut text = String::new();
+        let mut finished = false;
+        while let Some(evt) = stream.next().await {
+            match evt.unwrap() {
+                StreamEvent::TextDelta(d) => text.push_str(&d),
+                StreamEvent::Finished { usage, response, .. } => {
+                    let u = usage.expect("usage must be present from trailing chunk");
+                    assert_eq!(u.input_tokens, Some(5));
+                    assert_eq!(u.output_tokens, Some(3));
+                    assert_eq!(u.total_tokens, Some(8));
+                    assert_eq!(response.id.as_deref(), Some("r1"));
+                    finished = true;
+                }
+            }
+        }
+        assert_eq!(text, "Word");
+        assert!(finished);
+    }
+
+    // ------------------------------------------------------------------
+    // Streaming: [DONE] fallback uses accumulated state
+    // ------------------------------------------------------------------
+
+    /// No finish_reason chunk ever arrives; [DONE] causes fallback Finished.
+    /// The fallback must still use the id/model/usage accumulated so far.
+    #[tokio::test]
+    async fn test_stream_done_fallback_uses_accumulated_state() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock_body = concat!(
+            "data: {\"id\":\"r42\",\"model\":\"gpt-3.5\",\"choices\":[{\"delta\":{\"content\":\"Text\"}}]}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":1,\"total_tokens\":3}}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let _mock = server.mock("POST", "/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "text/event-stream")
+            .with_body(mock_body)
+            .create_async().await;
+
+        let client = OpenAiClient::with_base_url("test".to_string(), server.url());
+        let mut stream = client.stream("gpt-3.5", &test_request()).await.unwrap();
+
+        let mut got_finished = false;
+        while let Some(evt) = stream.next().await {
+            if let Ok(StreamEvent::Finished { finish_reason, usage, response }) = evt {
+                // Reason should fall back to Other("unknown") since no finish_reason chunk.
+                assert!(matches!(finish_reason, FinishReason::Other(ref s) if s == "unknown"));
+                assert_eq!(response.id.as_deref(), Some("r42"));
+                assert_eq!(response.model.as_deref(), Some("gpt-3.5"));
+                // Usage must be from the preceding usage chunk.
+                let u = usage.expect("usage should be accumulated");
+                assert_eq!(u.input_tokens, Some(2));
+                assert_eq!(u.total_tokens, Some(3));
+                got_finished = true;
+            }
+        }
+        assert!(got_finished);
+    }
+
+    // ------------------------------------------------------------------
+    // Streaming: usage-only chunk with empty choices does not error
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_stream_usage_only_chunk_no_error() {
+        let mut server = mockito::Server::new_async().await;
+
+        let mock_body = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"A\"}}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n",
+            // Usage-only: choices is an empty array — must not produce an error event.
+            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}\n\n",
+            "data: [DONE]\n\n"
+        );
+
+        let _mock = server.mock("POST", "/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "text/event-stream")
+            .with_body(mock_body)
+            .create_async().await;
+
+        let client = OpenAiClient::with_base_url("test".to_string(), server.url());
+        let mut stream = client.stream("gpt-4", &test_request()).await.unwrap();
+
+        let mut error_count = 0usize;
+        let mut finished_count = 0usize;
+        while let Some(evt) = stream.next().await {
+            match evt {
+                Ok(StreamEvent::Finished { .. }) => finished_count += 1,
+                Ok(_) => {}
+                Err(_) => error_count += 1,
+            }
+        }
+        assert_eq!(error_count, 0, "usage-only chunk must not produce an error");
+        assert_eq!(finished_count, 1, "exactly one Finished event expected");
+    }
+
+    // ------------------------------------------------------------------
+    // Streaming: malformed event produces an error item in the stream
+    // ------------------------------------------------------------------
+
     #[tokio::test]
     async fn test_stream_malformed_event() {
         let mut server = mockito::Server::new_async().await;
-        let mock_body = "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n\
-                         data: {bad json\n\n";
+        let mock_body = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"}}]}\n\n",
+            "data: {bad json\n\n"
+        );
 
         let _mock = server.mock("POST", "/chat/completions")
             .with_status(200)
@@ -369,22 +672,5 @@ mod tests {
         
         let evt2 = stream.next().await.unwrap();
         assert!(matches!(evt2, Err(_)));
-    }
-
-    #[tokio::test]
-    async fn test_stream_setup_error() {
-        let mut server = mockito::Server::new_async().await;
-        let mock = server.mock("POST", "/chat/completions")
-            .with_status(401)
-            .with_body("Unauthorized")
-            .create_async().await;
-
-        let client = OpenAiClient::with_base_url("test".to_string(), server.url());
-        let result = client.stream("gpt-4", &test_request()).await;
-
-        mock.assert_async().await;
-
-        // Must be a direct Err, not hidden inside a stream item.
-        assert!(matches!(result, Err(SdkError::Http(_))));
     }
 }

@@ -18,6 +18,17 @@ pub(super) struct ChatCompletionRequest {
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
+    /// Included only for streaming requests; tells OpenAI to append a
+    /// usage-only trailing chunk so we can surface token counts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_options: Option<StreamOptions>,
+}
+
+/// Controls extra streaming behaviour on OpenAI chat completions.
+#[derive(Debug, Serialize)]
+pub(super) struct StreamOptions {
+    /// When true, OpenAI appends a final chunk containing aggregated usage.
+    pub include_usage: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -92,6 +103,12 @@ pub(super) fn text_request_to_openai(model: &str, request: &TextRequest, stream_
         max_tokens: request.max_output_tokens,
         temperature: request.temperature,
         stream: if stream_mode { Some(true) } else { None },
+        // Request a usage-only trailing chunk only when streaming.
+        stream_options: if stream_mode {
+            Some(StreamOptions { include_usage: true })
+        } else {
+            None
+        },
     }
 }
 

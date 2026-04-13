@@ -23,7 +23,7 @@ impl OpenAiChatModel {
 #[async_trait]
 impl LanguageModel for OpenAiChatModel {
     async fn generate(&self, request: TextRequest) -> Result<TextResult, SdkError> {
-        self.client.generate(&self.model, request).await
+        self.client.generate(&self.model, &request).await
     }
 
     fn model_id(&self) -> &str {

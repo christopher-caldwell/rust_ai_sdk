@@ -61,16 +61,16 @@ pub(super) struct OpenAiErrorDetail {
     pub message: String,
 }
 
-pub(super) fn text_request_to_openai(model: &str, request: TextRequest) -> ChatCompletionRequest {
+pub(super) fn text_request_to_openai(model: &str, request: &TextRequest) -> ChatCompletionRequest {
     ChatCompletionRequest {
         model: model.to_string(),
-        messages: request.messages.into_iter().map(message_to_chat).collect(),
+        messages: request.messages.iter().map(message_to_chat).collect(),
         max_tokens: request.max_output_tokens,
         temperature: request.temperature,
     }
 }
 
-fn message_to_chat(msg: Message) -> ChatMessage {
+fn message_to_chat(msg: &Message) -> ChatMessage {
     ChatMessage {
         role: match msg.role {
             Role::System => "system",
@@ -78,7 +78,7 @@ fn message_to_chat(msg: Message) -> ChatMessage {
             Role::Assistant => "assistant",
         }
         .to_string(),
-        content: msg.content,
+        content: msg.content.clone(),
     }
 }
 
@@ -105,7 +105,7 @@ pub(super) fn chat_response_to_text_result(
         .finish_reason
         .as_deref()
         .map(map_finish_reason)
-        .unwrap_or_else(|| FinishReason::Other("missing".to_string()));
+        .unwrap_or_else(|| FinishReason::Other("unknown".to_string()));
 
     let usage = resp.usage.map(|u| TokenUsage {
         input_tokens: u.prompt_tokens,
@@ -123,3 +123,89 @@ pub(super) fn chat_response_to_text_result(
         },
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_finish_reason() {
+        assert!(matches!(map_finish_reason("stop"), FinishReason::Stop));
+        assert!(matches!(map_finish_reason("length"), FinishReason::Length));
+        assert!(matches!(map_finish_reason("content_filter"), FinishReason::ContentFilter));
+        
+        let other = map_finish_reason("max_tokens");
+        match other {
+            FinishReason::Other(s) => assert_eq!(s, "max_tokens"),
+            _ => panic!("Expected Other"),
+        }
+    }
+
+    #[test]
+    fn test_chat_response_to_text_result_success() {
+        let resp = ChatCompletionResponse {
+            id: Some("req_123".to_string()),
+            model: Some("gpt-4".to_string()),
+            choices: vec![Choice {
+                message: AssistantMessage {
+                    content: Some("Hello world".to_string()),
+                },
+                finish_reason: Some("stop".to_string()),
+            }],
+            usage: Some(UsageBody {
+                prompt_tokens: Some(10),
+                completion_tokens: Some(2),
+                total_tokens: Some(12),
+            }),
+        };
+
+        let res = chat_response_to_text_result(resp).expect("Should succeed");
+        assert_eq!(res.text, "Hello world");
+        assert!(matches!(res.finish_reason, FinishReason::Stop));
+        assert_eq!(res.response.id.as_deref(), Some("req_123"));
+        assert_eq!(res.response.model.as_deref(), Some("gpt-4"));
+        
+        let usg = res.usage.expect("Usage expected");
+        assert_eq!(usg.input_tokens, Some(10));
+        assert_eq!(usg.output_tokens, Some(2));
+        assert_eq!(usg.total_tokens, Some(12));
+    }
+
+    #[test]
+    fn test_chat_response_to_text_result_missing_finish_reason() {
+        let resp = ChatCompletionResponse {
+            id: None,
+            model: None,
+            choices: vec![Choice {
+                message: AssistantMessage {
+                    content: Some("Hello".to_string()),
+                },
+                finish_reason: None,
+            }],
+            usage: None,
+        };
+
+        let res = chat_response_to_text_result(resp).unwrap();
+        match res.finish_reason {
+            FinishReason::Other(s) => assert_eq!(s, "unknown"),
+            _ => panic!("Expected Other(unknown)"),
+        }
+    }
+
+    #[test]
+    fn test_chat_response_to_text_result_empty_choices() {
+        let resp = ChatCompletionResponse {
+            id: None,
+            model: None,
+            choices: vec![],
+            usage: None,
+        };
+
+        let err = chat_response_to_text_result(resp).unwrap_err();
+        match err {
+            SdkError::Api(msg) => assert!(msg.contains("no choices")),
+            _ => panic!("Expected API error"),
+        }
+    }
+}
+

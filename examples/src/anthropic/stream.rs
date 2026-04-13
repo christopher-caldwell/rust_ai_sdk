@@ -1,8 +1,8 @@
-// Requires OPENAI_API_KEY in the environment.
+// Requires ANTHROPIC_API_KEY in the environment.
 
 use ai_sdk::{
     core::{request::TextRequest, stream::StreamEvent},
-    providers::openai::model::OpenAiChatModel,
+    providers::anthropic::{AnthropicChatModel, AnthropicModel},
     runtime::stream::stream_text,
 };
 use futures_util::StreamExt;
@@ -10,7 +10,9 @@ use std::io::Write;
 
 #[tokio::main]
 async fn main() {
-    let model = OpenAiChatModel::new(std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set"), "gpt-4o-mini");
+    let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
+    let model = AnthropicChatModel::new(api_key, AnthropicModel::Haiku4_5);
+
 
     let request = TextRequest::prompt("Write a short haiku about the Rust programming language");
 
@@ -22,11 +24,7 @@ async fn main() {
                 print!("{}", text);
                 std::io::stdout().flush().unwrap();
             }
-            StreamEvent::Finished {
-                finish_reason,
-                usage,
-                ..
-            } => {
+            StreamEvent::Finished { finish_reason, usage, .. } => {
                 println!("\n\n[Finished: {:?}]", finish_reason);
                 if let Some(u) = usage {
                     println!(

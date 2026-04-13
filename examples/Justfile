@@ -1,9 +1,25 @@
 set dotenv-load
 
-# Run the generate example
-generate:
-	cargo run --bin generate
+# ──────────────────────────────────────────────
+# OpenAI examples
+# ──────────────────────────────────────────────
 
-# Run the stream example
-stream:
-	cargo run --bin stream
+# Non-streaming generation via OpenAI
+openai-generate:
+	cargo run --bin openai-generate
+
+# Streaming generation via OpenAI
+openai-stream:
+	cargo run --bin openai-stream
+
+# ──────────────────────────────────────────────
+# Anthropic examples
+# ──────────────────────────────────────────────
+
+# Non-streaming generation via Anthropic
+anthropic-generate:
+	cargo run --bin anthropic-generate
+
+# Streaming generation via Anthropic
+anthropic-stream:
+	cargo run --bin anthropic-stream

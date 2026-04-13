@@ -9,9 +9,17 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 futures-util = "0.3"
 
 [[bin]]
-name = "generate"
-path = "src/generate.rs"
+name = "openai-generate"
+path = "src/openai/generate.rs"
 
 [[bin]]
-name = "stream"
-path = "src/stream.rs"
+name = "openai-stream"
+path = "src/openai/stream.rs"
+
+[[bin]]
+name = "anthropic-generate"
+path = "src/anthropic/generate.rs"
+
+[[bin]]
+name = "anthropic-stream"
+path = "src/anthropic/stream.rs"

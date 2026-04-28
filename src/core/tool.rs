@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 /// Provider-neutral tool definition.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
@@ -24,7 +24,7 @@ impl ToolDefinition {
 }
 
 /// Controls which tool(s) the model may call.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolChoice {
     /// Model decides whether to call a tool (default).
     Auto,
@@ -32,4 +32,10 @@ pub enum ToolChoice {
     None,
     /// Model must call exactly this named tool.
     Required { name: String },
+}
+
+impl ToolChoice {
+    pub fn required(name: impl Into<String>) -> Self {
+        Self::Required { name: name.into() }
+    }
 }

@@ -10,6 +10,7 @@ use crate::core::{
 
 use super::client::AnthropicClient;
 
+#[derive(Clone)]
 pub struct AnthropicChatModel {
     client: AnthropicClient,
     model: String,
@@ -32,6 +33,10 @@ impl AnthropicChatModel {
 impl LanguageModel for AnthropicChatModel {
     async fn generate(&self, request: TextRequest) -> Result<TextResult, SdkError> {
         self.client.generate(&self.model, &request).await
+    }
+
+    async fn generate_chat(&self, request: TextRequest) -> Result<ChatResult, SdkError> {
+        self.client.generate_chat(&self.model, &request).await
     }
 
     async fn stream(&self, request: TextRequest) -> Result<TextEventStream, SdkError> {

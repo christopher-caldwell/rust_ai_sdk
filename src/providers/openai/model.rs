@@ -10,6 +10,7 @@ use crate::core::{
 
 use super::client::OpenAiClient;
 
+#[derive(Clone)]
 pub struct OpenAiChatModel {
     client: OpenAiClient,
     model: String,
@@ -32,6 +33,10 @@ impl OpenAiChatModel {
 impl LanguageModel for OpenAiChatModel {
     async fn generate(&self, request: TextRequest) -> Result<TextResult, SdkError> {
         self.client.generate(&self.model, &request).await
+    }
+
+    async fn generate_chat(&self, request: TextRequest) -> Result<ChatResult, SdkError> {
+        self.client.generate_chat(&self.model, &request).await
     }
 
     async fn stream(&self, request: TextRequest) -> Result<TextEventStream, SdkError> {

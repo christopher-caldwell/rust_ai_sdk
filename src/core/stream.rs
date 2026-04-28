@@ -7,7 +7,7 @@ use super::{
     types::{FinishReason, ResponseMetadata, Usage},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StreamEvent {
     TextDelta(String),
     Finished {

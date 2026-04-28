@@ -38,27 +38,7 @@ pub async fn run_turn<M: LanguageModel + ?Sized>(
     let mut acc = TurnAccumulator::default();
 
     while let Some(event) = stream.next().await {
-        match event? {
-            StreamEvent::TextDelta(t) => acc.push_text(t),
-            StreamEvent::ToolCallStarted { id, name, index } => {
-                acc.start_tool_call(index, id, name);
-            }
-            StreamEvent::ToolCallDelta {
-                index, input_delta, ..
-            } => {
-                acc.append_tool_delta(index, input_delta);
-            }
-            StreamEvent::ToolCallReady { .. } => {
-                // Informational — accumulator already has the full input from deltas.
-            }
-            StreamEvent::Finished {
-                finish_reason,
-                usage,
-                response,
-            } => {
-                acc.set_finish(finish_reason, usage, response);
-            }
-        }
+        acc.push_event(event?);
     }
 
     acc.into_outcome()
@@ -108,17 +88,23 @@ impl ContinuationBuilder {
 }
 
 // ---------------------------------------------------------------------------
-// Internal accumulator
+// Stream turn accumulation
 // ---------------------------------------------------------------------------
 
+#[derive(Debug)]
 struct ToolCallBuffer {
     id: String,
     name: String,
     arguments: String,
+    input: Option<Value>,
 }
 
-#[derive(Default)]
-struct TurnAccumulator {
+/// Accumulates a provider-neutral stream into one assistant turn.
+///
+/// This is useful for HTTP adapters that need to forward individual stream
+/// events while still reconstructing the assistant message for continuation.
+#[derive(Debug, Default)]
+pub struct TurnAccumulator {
     parts_order: Vec<PartSlot>,
     tool_buffers: HashMap<u32, ToolCallBuffer>,
     finish_reason: Option<FinishReason>,
@@ -126,50 +112,45 @@ struct TurnAccumulator {
     response: Option<ResponseMetadata>,
 }
 
+#[derive(Debug)]
 enum PartSlot {
     Text(String),
     ToolIndex(u32),
 }
 
 impl TurnAccumulator {
-    fn push_text(&mut self, text: String) {
-        if let Some(PartSlot::Text(existing)) = self.parts_order.last_mut() {
-            existing.push_str(&text);
-        } else {
-            self.parts_order.push(PartSlot::Text(text));
-        }
-    }
-
-    fn start_tool_call(&mut self, index: u32, id: String, name: String) {
-        self.tool_buffers.insert(
-            index,
-            ToolCallBuffer {
+    pub fn push_event(&mut self, event: StreamEvent) {
+        match event {
+            StreamEvent::TextDelta(text) => self.push_text(text),
+            StreamEvent::ToolCallStarted { id, name, index } => {
+                self.start_tool_call(index, id, name);
+            }
+            StreamEvent::ToolCallDelta {
+                id,
+                index,
+                input_delta,
+            } => {
+                self.append_tool_delta(index, id, input_delta);
+            }
+            StreamEvent::ToolCallReady {
                 id,
                 name,
-                arguments: String::new(),
-            },
-        );
-        self.parts_order.push(PartSlot::ToolIndex(index));
-    }
-
-    fn append_tool_delta(&mut self, index: u32, delta: String) {
-        if let Some(buf) = self.tool_buffers.get_mut(&index) {
-            buf.arguments.push_str(&delta);
+                index,
+                input,
+            } => {
+                self.ready_tool_call(index, id, name, input);
+            }
+            StreamEvent::Finished {
+                finish_reason,
+                usage,
+                response,
+            } => {
+                self.set_finish(finish_reason, usage, response);
+            }
         }
     }
 
-    fn set_finish(
-        &mut self,
-        finish_reason: FinishReason,
-        usage: Option<Usage>,
-        response: ResponseMetadata,
-    ) {
-        self.finish_reason = Some(finish_reason);
-        self.usage = usage;
-        self.response = Some(response);
-    }
-
-    fn into_outcome(mut self) -> Result<TurnOutcome, SdkError> {
+    pub fn into_accumulated(mut self) -> AccumulatedTurn {
         let finish_reason = self
             .finish_reason
             .unwrap_or(FinishReason::Other("unknown".to_string()));
@@ -189,8 +170,10 @@ impl TurnAccumulator {
                 }
                 PartSlot::ToolIndex(idx) => {
                     if let Some(buf) = self.tool_buffers.remove(&idx) {
-                        let input: Value = serde_json::from_str(&buf.arguments)
-                            .unwrap_or(Value::String(buf.arguments.clone()));
+                        let input = buf.input.unwrap_or_else(|| {
+                            serde_json::from_str(&buf.arguments)
+                                .unwrap_or(Value::String(buf.arguments.clone()))
+                        });
                         parts.push(MessagePart::ToolCall(ToolCall {
                             id: buf.id,
                             name: buf.name,
@@ -201,33 +184,150 @@ impl TurnAccumulator {
             }
         }
 
-        let tool_calls: Vec<ToolCall> = parts
-            .iter()
-            .filter_map(|p| {
-                if let MessagePart::ToolCall(tc) = p {
-                    Some(tc.clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
+        AccumulatedTurn {
+            parts,
+            finish_reason,
+            usage,
+            response,
+        }
+    }
+
+    pub fn into_outcome(self) -> Result<TurnOutcome, SdkError> {
+        let turn = self.into_accumulated();
+        let tool_calls = turn.tool_calls_cloned();
 
         if tool_calls.is_empty() {
             Ok(TurnOutcome::Completed(ChatResult {
-                parts,
-                finish_reason,
-                usage,
-                response,
+                parts: turn.parts,
+                finish_reason: turn.finish_reason,
+                usage: turn.usage,
+                response: turn.response,
             }))
         } else {
             Ok(TurnOutcome::ToolsRequired {
                 tool_calls,
-                assistant_parts: parts,
-                finish_reason,
-                usage,
-                response,
+                assistant_parts: turn.parts,
+                finish_reason: turn.finish_reason,
+                usage: turn.usage,
+                response: turn.response,
             })
         }
+    }
+
+    fn push_text(&mut self, text: String) {
+        if let Some(PartSlot::Text(existing)) = self.parts_order.last_mut() {
+            existing.push_str(&text);
+        } else {
+            self.parts_order.push(PartSlot::Text(text));
+        }
+    }
+
+    fn start_tool_call(&mut self, index: u32, id: String, name: String) {
+        self.ensure_tool_slot(index);
+        let buffer = self.tool_buffers.entry(index).or_insert(ToolCallBuffer {
+            id: String::new(),
+            name: String::new(),
+            arguments: String::new(),
+            input: None,
+        });
+        buffer.id = id;
+        buffer.name = name;
+    }
+
+    fn append_tool_delta(&mut self, index: u32, id: String, delta: String) {
+        self.ensure_tool_slot(index);
+        let buffer = self.tool_buffers.entry(index).or_insert(ToolCallBuffer {
+            id: String::new(),
+            name: String::new(),
+            arguments: String::new(),
+            input: None,
+        });
+        if !id.is_empty() {
+            buffer.id = id;
+        }
+        buffer.arguments.push_str(&delta);
+    }
+
+    fn ready_tool_call(&mut self, index: u32, id: String, name: String, input: Value) {
+        self.ensure_tool_slot(index);
+        let buffer = self.tool_buffers.entry(index).or_insert(ToolCallBuffer {
+            id: String::new(),
+            name: String::new(),
+            arguments: String::new(),
+            input: None,
+        });
+        buffer.id = id;
+        buffer.name = name;
+        buffer.input = Some(input);
+    }
+
+    fn ensure_tool_slot(&mut self, index: u32) {
+        if !self
+            .parts_order
+            .iter()
+            .any(|slot| matches!(slot, PartSlot::ToolIndex(existing) if *existing == index))
+        {
+            self.parts_order.push(PartSlot::ToolIndex(index));
+        }
+    }
+
+    fn set_finish(
+        &mut self,
+        finish_reason: FinishReason,
+        usage: Option<Usage>,
+        response: ResponseMetadata,
+    ) {
+        self.finish_reason = Some(finish_reason);
+        self.usage = usage;
+        self.response = Some(response);
+    }
+}
+
+/// A completed assistant turn reconstructed from stream events.
+#[derive(Debug, Clone)]
+pub struct AccumulatedTurn {
+    pub parts: Vec<MessagePart>,
+    pub finish_reason: FinishReason,
+    pub usage: Option<Usage>,
+    pub response: ResponseMetadata,
+}
+
+impl AccumulatedTurn {
+    pub fn text(&self) -> String {
+        self.parts
+            .iter()
+            .filter_map(|p| {
+                if let MessagePart::Text(text) = p {
+                    Some(text.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
+    pub fn tool_calls(&self) -> Vec<&ToolCall> {
+        self.parts
+            .iter()
+            .filter_map(|p| {
+                if let MessagePart::ToolCall(tool_call) = p {
+                    Some(tool_call)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn tool_calls_cloned(&self) -> Vec<ToolCall> {
+        self.tool_calls().into_iter().cloned().collect()
+    }
+
+    pub fn has_tool_calls(&self) -> bool {
+        self.parts
+            .iter()
+            .any(|part| matches!(part, MessagePart::ToolCall(_)))
     }
 }
 
@@ -263,6 +363,13 @@ mod tests {
             &self,
             _request: TextRequest,
         ) -> Result<crate::core::result::TextResult, SdkError> {
+            unimplemented!()
+        }
+
+        async fn generate_chat(
+            &self,
+            _request: TextRequest,
+        ) -> Result<crate::core::result::ChatResult, SdkError> {
             unimplemented!()
         }
 
@@ -348,6 +455,75 @@ mod tests {
                 assert_eq!(tool_calls.len(), 1);
                 assert_eq!(tool_calls[0].id, "call_1");
                 assert_eq!(tool_calls[0].name, "get_weather");
+                assert_eq!(tool_calls[0].input["location"], "Paris");
+            }
+            TurnOutcome::Completed(_) => panic!("Expected ToolsRequired"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_uses_tool_call_ready_input_without_deltas() {
+        let model = MockModel::new(vec![
+            StreamEvent::ToolCallReady {
+                id: "call_ready".to_string(),
+                name: "get_weather".to_string(),
+                index: 0,
+                input: serde_json::json!({"location": "Paris"}),
+            },
+            StreamEvent::Finished {
+                finish_reason: FinishReason::ToolUse,
+                usage: None,
+                response: meta(),
+            },
+        ]);
+
+        let outcome = run_turn(&model, TextRequest::prompt("weather?"))
+            .await
+            .unwrap();
+
+        match outcome {
+            TurnOutcome::ToolsRequired { tool_calls, .. } => {
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].id, "call_ready");
+                assert_eq!(tool_calls[0].name, "get_weather");
+                assert_eq!(tool_calls[0].input["location"], "Paris");
+            }
+            TurnOutcome::Completed(_) => panic!("Expected ToolsRequired"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_ready_input_overrides_partial_delta_buffer() {
+        let model = MockModel::new(vec![
+            StreamEvent::ToolCallStarted {
+                id: "call_override".to_string(),
+                name: "get_weather".to_string(),
+                index: 0,
+            },
+            StreamEvent::ToolCallDelta {
+                id: "call_override".to_string(),
+                index: 0,
+                input_delta: r#"{"location":"Par"#.to_string(),
+            },
+            StreamEvent::ToolCallReady {
+                id: "call_override".to_string(),
+                name: "get_weather".to_string(),
+                index: 0,
+                input: serde_json::json!({"location": "Paris"}),
+            },
+            StreamEvent::Finished {
+                finish_reason: FinishReason::ToolUse,
+                usage: None,
+                response: meta(),
+            },
+        ]);
+
+        let outcome = run_turn(&model, TextRequest::prompt("weather?"))
+            .await
+            .unwrap();
+
+        match outcome {
+            TurnOutcome::ToolsRequired { tool_calls, .. } => {
                 assert_eq!(tool_calls[0].input["location"], "Paris");
             }
             TurnOutcome::Completed(_) => panic!("Expected ToolsRequired"),

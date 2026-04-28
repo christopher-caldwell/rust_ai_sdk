@@ -1,15 +1,16 @@
-use std::{collections::BTreeMap, convert::Infallible, net::SocketAddr};
+use std::{convert::Infallible, net::SocketAddr};
 
 use ai_sdk::{
     core::{
-        message::{Message, MessagePart, ToolCall},
-        request::TextRequest,
-        stream::StreamEvent,
-        tool::ToolDefinition,
-        types::FinishReason,
+        error::SdkError, message::Message, request::TextRequest, stream::StreamEvent,
+        tool::ToolDefinition, types::FinishReason,
     },
     providers::openai::model::OpenAiChatModel,
-    runtime::{stream::stream_text, turn::ContinuationBuilder},
+    runtime::{
+        stream::stream_text,
+        tools::ToolRegistry,
+        turn::{ContinuationBuilder, TurnAccumulator},
+    },
 };
 use async_stream::stream;
 use axum::{
@@ -29,8 +30,8 @@ use tracing_subscriber::fmt;
 
 #[derive(Clone)]
 struct AppState {
-    openai_api_key: String,
-    model: String,
+    model: OpenAiChatModel,
+    tools: ToolRegistry,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,8 +70,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(3001);
 
     let state = AppState {
-        openai_api_key,
-        model,
+        model: OpenAiChatModel::new(openai_api_key, model),
+        tools: demo_tool_registry(),
     };
 
     let app = Router::new()
@@ -109,20 +110,17 @@ fn chat_stream(
         let message_id = message_id();
         yield Ok(sse_json(json!({ "type": "start", "messageId": message_id })));
 
-        let mut request = TextRequest {
-            messages: ui_messages_to_sdk_messages(input.messages),
-            max_output_tokens: Some(800),
-            temperature: Some(0.7),
-            tools: demo_tools(),
-            tool_choice: None,
-        };
-
-        let model = OpenAiChatModel::new(state.openai_api_key, state.model);
+        let mut request = TextRequest::builder()
+            .messages(ui_messages_to_sdk_messages(input.messages))
+            .max_output_tokens(800)
+            .temperature(0.7)
+            .tools(state.tools.definitions())
+            .build();
 
         for step_index in 0..5 {
             yield Ok(sse_json(json!({ "type": "start-step" })));
 
-            let sdk_stream = match stream_text(&model, request.clone()).await {
+            let sdk_stream = match stream_text(&state.model, request.clone()).await {
                 Ok(stream) => stream,
                 Err(error) => {
                     yield Ok(sse_json(json!({
@@ -136,69 +134,61 @@ fn chat_stream(
                 }
             };
 
-            let mut turn = StreamedTurn::new(step_index);
+            let mut turn = TurnAccumulator::default();
+            let text_part_id = format!("text_{step_index}");
+            let mut text_started = false;
             futures_util::pin_mut!(sdk_stream);
 
             while let Some(event) = sdk_stream.next().await {
                 match event {
-                    Ok(StreamEvent::TextDelta(delta)) => {
-                        if !turn.text_started {
-                            turn.text_started = true;
-                            yield Ok(sse_json(json!({
-                                "type": "text-start",
-                                "id": turn.text_part_id,
-                            })));
-                        }
+                    Ok(event) => {
+                        turn.push_event(event.clone());
 
-                        turn.text.push_str(&delta);
-                        yield Ok(sse_json(json!({
-                            "type": "text-delta",
-                            "id": turn.text_part_id,
-                            "delta": delta,
-                        })));
-                    }
-                    Ok(StreamEvent::ToolCallStarted { id, name, index }) => {
-                        turn.tool_buffers.insert(index, ToolBuffer {
-                            id: id.clone(),
-                            name: name.clone(),
-                            input_json: String::new(),
-                        });
-                        yield Ok(sse_json(json!({
-                            "type": "tool-input-start",
-                            "toolCallId": id,
-                            "toolName": name,
-                        })));
-                    }
-                    Ok(StreamEvent::ToolCallDelta { id: _, index, input_delta }) => {
-                        if let Some(buffer) = turn.tool_buffers.get_mut(&index) {
-                            buffer.input_json.push_str(&input_delta);
+                        match event {
+                            StreamEvent::TextDelta(delta) => {
+                                if !text_started {
+                                    text_started = true;
+                                    yield Ok(sse_json(json!({
+                                        "type": "text-start",
+                                        "id": text_part_id,
+                                    })));
+                                }
+
+                                yield Ok(sse_json(json!({
+                                    "type": "text-delta",
+                                    "id": text_part_id,
+                                    "delta": delta,
+                                })));
+                            }
+                            StreamEvent::ToolCallStarted { id, name, .. } => {
+                                yield Ok(sse_json(json!({
+                                    "type": "tool-input-start",
+                                    "toolCallId": id,
+                                    "toolName": name,
+                                })));
+                            }
+                            StreamEvent::ToolCallDelta { id, index, input_delta } => {
+                                let tool_call_id = if id.is_empty() {
+                                    format!("tool_call_{index}")
+                                } else {
+                                    id
+                                };
+                                yield Ok(sse_json(json!({
+                                    "type": "tool-input-delta",
+                                    "toolCallId": tool_call_id,
+                                    "inputTextDelta": input_delta,
+                                })));
+                            }
+                            StreamEvent::ToolCallReady { id, name, input, .. } => {
+                                yield Ok(sse_json(json!({
+                                    "type": "tool-input-available",
+                                    "toolCallId": id,
+                                    "toolName": name,
+                                    "input": input,
+                                })));
+                            }
+                            StreamEvent::Finished { .. } => {}
                         }
-                        let tool_call_id = turn
-                            .tool_buffers
-                            .get(&index)
-                            .map(|buffer| buffer.id.clone())
-                            .unwrap_or_else(|| format!("tool_call_{index}"));
-                        yield Ok(sse_json(json!({
-                            "type": "tool-input-delta",
-                            "toolCallId": tool_call_id,
-                            "inputTextDelta": input_delta,
-                        })));
-                    }
-                    Ok(StreamEvent::ToolCallReady { id, name, index, input }) => {
-                        turn.tool_buffers.insert(index, ToolBuffer {
-                            id: id.clone(),
-                            name: name.clone(),
-                            input_json: input.to_string(),
-                        });
-                        yield Ok(sse_json(json!({
-                            "type": "tool-input-available",
-                            "toolCallId": id,
-                            "toolName": name,
-                            "input": input,
-                        })));
-                    }
-                    Ok(StreamEvent::Finished { finish_reason, .. }) => {
-                        turn.finish_reason = Some(finish_reason);
                     }
                     Err(error) => {
                         yield Ok(sse_json(json!({
@@ -213,12 +203,14 @@ fn chat_stream(
                 }
             }
 
-            if turn.text_started {
-                yield Ok(sse_json(json!({ "type": "text-end", "id": turn.text_part_id })));
+            if text_started {
+                yield Ok(sse_json(json!({ "type": "text-end", "id": text_part_id })));
             }
 
-            let finish_reason = turn.finish_reason.clone().unwrap_or(FinishReason::Stop);
-            let (assistant_parts, tool_calls) = turn.into_parts();
+            let accumulated_turn = turn.into_accumulated();
+            let finish_reason = accumulated_turn.finish_reason.clone();
+            let tool_calls = accumulated_turn.tool_calls_cloned();
+            let assistant_parts = accumulated_turn.parts;
 
             yield Ok(sse_json(json!({ "type": "finish-step" })));
 
@@ -235,7 +227,10 @@ fn chat_stream(
                 ContinuationBuilder::from_request(request).with_assistant_turn(assistant_parts);
 
             for call in &tool_calls {
-                let output = execute_tool(call);
+                let output = match state.tools.execute(call).await {
+                    Ok(output) => output,
+                    Err(error) => json!({ "error": error.to_string() }),
+                };
                 yield Ok(sse_json(json!({
                     "type": "tool-output-available",
                     "toolCallId": &call.id,
@@ -254,59 +249,6 @@ fn chat_stream(
         yield Ok(sse_json(json!({ "type": "finish", "finishReason": "error" })));
         yield Ok(sse_done());
     }
-}
-
-struct StreamedTurn {
-    text_part_id: String,
-    text_started: bool,
-    text: String,
-    tool_buffers: BTreeMap<u32, ToolBuffer>,
-    finish_reason: Option<FinishReason>,
-}
-
-impl StreamedTurn {
-    fn new(step_index: usize) -> Self {
-        Self {
-            text_part_id: format!("text_{step_index}"),
-            text_started: false,
-            text: String::new(),
-            tool_buffers: BTreeMap::new(),
-            finish_reason: None,
-        }
-    }
-
-    fn into_parts(self) -> (Vec<MessagePart>, Vec<ToolCall>) {
-        let mut parts = Vec::new();
-        if !self.text.is_empty() {
-            parts.push(MessagePart::Text(self.text));
-        }
-
-        let tool_calls: Vec<ToolCall> = self
-            .tool_buffers
-            .into_values()
-            .map(|buffer| {
-                let input = serde_json::from_str(&buffer.input_json)
-                    .unwrap_or_else(|_| Value::String(buffer.input_json));
-                ToolCall {
-                    id: buffer.id,
-                    name: buffer.name,
-                    input,
-                }
-            })
-            .collect();
-
-        for call in &tool_calls {
-            parts.push(MessagePart::ToolCall(call.clone()));
-        }
-
-        (parts, tool_calls)
-    }
-}
-
-struct ToolBuffer {
-    id: String,
-    name: String,
-    input_json: String,
 }
 
 fn ui_messages_to_sdk_messages(messages: Vec<UiMessage>) -> Vec<Message> {
@@ -339,69 +281,66 @@ fn ui_messages_to_sdk_messages(messages: Vec<UiMessage>) -> Vec<Message> {
     sdk_messages
 }
 
-fn demo_tools() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition::new(
-            "get_weather",
-            "Get a deterministic demo weather report for a city.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "location": {
-                        "type": "string",
-                        "description": "City name, for example Paris or Chicago"
-                    }
-                },
-                "required": ["location"],
-                "additionalProperties": false
-            }),
-        ),
-        ToolDefinition::new(
-            "get_current_time",
-            "Get the current server time for a named timezone.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "timezone": {
-                        "type": "string",
-                        "description": "Timezone label such as America/Chicago"
-                    }
-                },
-                "required": ["timezone"],
-                "additionalProperties": false
-            }),
-        ),
-    ]
-}
-
-fn execute_tool(call: &ToolCall) -> Value {
-    match call.name.as_str() {
-        "get_weather" => {
-            let location = call
-                .input
-                .get("location")
-                .and_then(Value::as_str)
-                .unwrap_or("unknown");
-            fake_weather(location)
-        }
-        "get_current_time" => {
-            let timezone = call
-                .input
-                .get("timezone")
-                .and_then(Value::as_str)
-                .unwrap_or("America/Chicago");
-            let unix_seconds = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|duration| duration.as_secs())
-                .unwrap_or_default();
-            json!({
-                "timezone": timezone,
-                "current_unix_seconds": unix_seconds,
-                "note": "Demo tool returns server time as a Unix timestamp."
-            })
-        }
-        name => json!({ "error": format!("unknown tool: {name}") }),
-    }
+fn demo_tool_registry() -> ToolRegistry {
+    ToolRegistry::new()
+        .register(
+            ToolDefinition::new(
+                "get_weather",
+                "Get a deterministic demo weather report for a city.",
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "City name, for example Paris or Chicago"
+                        }
+                    },
+                    "required": ["location"],
+                    "additionalProperties": false
+                }),
+            ),
+            |call| async move {
+                let location = call
+                    .input
+                    .get("location")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                Ok::<Value, SdkError>(fake_weather(location))
+            },
+        )
+        .register(
+            ToolDefinition::new(
+                "get_current_time",
+                "Get the current server time for a named timezone.",
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "timezone": {
+                            "type": "string",
+                            "description": "Timezone label such as America/Chicago"
+                        }
+                    },
+                    "required": ["timezone"],
+                    "additionalProperties": false
+                }),
+            ),
+            |call| async move {
+                let timezone = call
+                    .input
+                    .get("timezone")
+                    .and_then(Value::as_str)
+                    .unwrap_or("America/Chicago");
+                let unix_seconds = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|duration| duration.as_secs())
+                    .unwrap_or_default();
+                Ok::<Value, SdkError>(json!({
+                    "timezone": timezone,
+                    "current_unix_seconds": unix_seconds,
+                    "note": "Demo tool returns server time as a Unix timestamp."
+                }))
+            },
+        )
 }
 
 fn fake_weather(location: &str) -> Value {

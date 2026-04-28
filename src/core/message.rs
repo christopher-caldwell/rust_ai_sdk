@@ -9,7 +9,7 @@ pub enum Role {
 }
 
 /// A single unit of content within a message.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MessagePart {
     Text(String),
     ToolCall(ToolCall),
@@ -17,7 +17,7 @@ pub enum MessagePart {
 }
 
 /// A tool invocation emitted by the assistant.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
@@ -25,7 +25,7 @@ pub struct ToolCall {
 }
 
 /// The result of executing a tool, sent back as a user-role message.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ToolResult {
     pub tool_call_id: String,
     pub content: String,
@@ -36,7 +36,7 @@ pub struct ToolResult {
 /// Provider translators call `effective_parts()` so both old-style struct literals
 /// (`Message { role, content, parts: vec![] }`) and new-style constructors work
 /// identically at the wire level.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Message {
     pub role: Role,
     /// Plain text content — used when `parts` is empty.

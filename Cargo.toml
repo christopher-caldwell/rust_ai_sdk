@@ -1,7 +1,17 @@
 [package]
 name = "ai_sdk"
 version = "0.1.0"
+license = "MIT"
 edition = "2024"
+description = "Provider-neutral Rust SDK for streaming chat and tool calling."
+repository = "https://github.com/christopher-caldwell/rust_ai_sdk"
+readme = "README.md"
+keywords = ["ai", "llm", "chat", "streaming", "tools"]
+categories = ["api-bindings", "asynchronous"]
+exclude = [
+    "examples/**",
+    "target/**",
+]
 
 [dependencies]
 async-trait = "0.1"

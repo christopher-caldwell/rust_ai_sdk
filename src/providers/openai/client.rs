@@ -21,6 +21,7 @@ use futures_util::StreamExt;
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const ERROR_BODY_SNIPPET_LEN: usize = 512;
 
+#[derive(Clone)]
 pub struct OpenAiClient {
     api_key: String,
     base_url: String,

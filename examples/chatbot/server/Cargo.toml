@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ai_sdk = { version = "0.1.0", path = "../../.." }
+another-ai-sdk = { version = "0.1.0", path = "../../.." }
 async-stream = "0.3.6"
 axum = "0.8.9"
 bytes = "1.11.1"

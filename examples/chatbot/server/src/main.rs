@@ -1,6 +1,6 @@
 use std::{convert::Infallible, net::SocketAddr};
 
-use ai_sdk::{
+use another_ai_sdk::{
     core::{
         error::SdkError, message::Message, request::TextRequest, stream::StreamEvent,
         tool::ToolDefinition, types::FinishReason,

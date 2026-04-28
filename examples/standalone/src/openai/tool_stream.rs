@@ -3,7 +3,7 @@
 // Mirrors the target server shape: stream one model turn, execute requested
 // tools in application code, append tool results, then stream the final answer.
 
-use ai_sdk::{
+use another_ai_sdk::{
     core::{
         message::{Message, MessagePart, ToolCall},
         request::TextRequest,

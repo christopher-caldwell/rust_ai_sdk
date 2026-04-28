@@ -2,7 +2,7 @@
 //
 // Demonstrates a tool-aware turn using the structured non-streaming result.
 
-use ai_sdk::{
+use another_ai_sdk::{
     core::{
         message::ToolCall,
         request::TextRequest,

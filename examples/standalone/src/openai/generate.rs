@@ -1,6 +1,6 @@
 // Requires OPENAI_API_KEY in the environment.
 
-use ai_sdk::{
+use another_ai_sdk::{
     core::request::TextRequest,
     providers::openai::{model::OpenAiChatModel, OpenAiModel},
     runtime::generate::generate_text,

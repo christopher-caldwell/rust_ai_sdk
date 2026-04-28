@@ -1,6 +1,6 @@
 // Requires OPENAI_API_KEY in the environment.
 
-use ai_sdk::{
+use another_ai_sdk::{
     core::{request::TextRequest, stream::StreamEvent},
     providers::openai::{model::OpenAiChatModel, OpenAiModel},
     runtime::stream::stream_text,

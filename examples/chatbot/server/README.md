@@ -1,7 +1,7 @@
 # Chatbot Server Example
 
 This is a small Axum server that connects the Vite chat UI to the local
-`ai_sdk` crate. It intentionally keeps the app code thin: one chat route,
+`another-ai-sdk` crate. It intentionally keeps the app code thin: one chat route,
 provider setup, request/response adapters, and a couple of demo tools.
 
 The important idea is that the browser talks in Vercel AI SDK UI-message

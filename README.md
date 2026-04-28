@@ -1,4 +1,4 @@
-# rust_ai_sdk
+# another-ai-sdk
 
 A small Rust SDK for building provider-neutral AI chat applications with
 streaming and tool calling.
@@ -29,7 +29,7 @@ This crate is currently used from this repository. Add it as a path dependency:
 
 ```toml
 [dependencies]
-ai_sdk = { path = "/path/to/rust_ai_sdk" }
+another-ai-sdk = { path = "/path/to/rust_ai_sdk" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 futures-util = "0.3"
 serde_json = "1"
@@ -38,7 +38,7 @@ serde_json = "1"
 For examples inside this repo, use:
 
 ```toml
-ai_sdk = { path = "../.." }
+another-ai-sdk = { path = "../.." }
 ```
 
 Provider examples require API keys:
@@ -53,8 +53,8 @@ export ANTHROPIC_API_KEY="..."
 Generate one text response:
 
 ```rust
-use ai_sdk::prelude::*;
-use ai_sdk::providers::openai::model::OpenAiChatModel;
+use another_ai_sdk::prelude::*;
+use another_ai_sdk::providers::openai::model::OpenAiChatModel;
 
 #[tokio::main]
 async fn main() -> Result<(), SdkError> {
@@ -80,8 +80,8 @@ async fn main() -> Result<(), SdkError> {
 Stream text deltas:
 
 ```rust
-use ai_sdk::prelude::*;
-use ai_sdk::providers::openai::model::OpenAiChatModel;
+use another_ai_sdk::prelude::*;
+use another_ai_sdk::providers::openai::model::OpenAiChatModel;
 use futures_util::StreamExt;
 
 #[tokio::main]
@@ -115,8 +115,8 @@ definitions to the model and gives you provider-neutral tool calls back. Your
 server decides what each tool is allowed to do.
 
 ```rust
-use ai_sdk::prelude::*;
-use ai_sdk::providers::openai::model::OpenAiChatModel;
+use another_ai_sdk::prelude::*;
+use another_ai_sdk::providers::openai::model::OpenAiChatModel;
 use serde_json::{Value, json};
 
 #[tokio::main]

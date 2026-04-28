@@ -2,7 +2,7 @@
 //
 // Prints raw provider-neutral stream events so the event API is easy to inspect.
 
-use ai_sdk::{
+use another_ai_sdk::{
     core::{
         request::TextRequest,
         stream::StreamEvent,

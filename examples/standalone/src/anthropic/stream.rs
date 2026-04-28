@@ -1,6 +1,6 @@
 // Requires ANTHROPIC_API_KEY in the environment.
 
-use ai_sdk::{
+use another_ai_sdk::{
     core::{request::TextRequest, stream::StreamEvent},
     providers::anthropic::{AnthropicChatModel, AnthropicModel},
     runtime::stream::stream_text,

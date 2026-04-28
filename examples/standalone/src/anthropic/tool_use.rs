@@ -2,7 +2,7 @@
 //
 // Demonstrates the same structured non-streaming tool loop against Anthropic.
 
-use ai_sdk::{
+use another_ai_sdk::{
     core::{
         message::ToolCall,
         request::TextRequest,

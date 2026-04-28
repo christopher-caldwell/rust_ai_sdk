@@ -28,6 +28,10 @@ use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tracing_subscriber::fmt;
 
+const MAX_MODEL_STEPS: usize = 5;
+
+type SseChunk = Result<Bytes, Infallible>;
+
 #[derive(Clone)]
 struct AppState {
     model: OpenAiChatModel,
@@ -107,8 +111,7 @@ fn chat_stream(
     input: ChatRequest,
 ) -> impl Stream<Item = Result<Bytes, Infallible>> + Send + 'static {
     stream! {
-        let message_id = message_id();
-        yield Ok(sse_json(json!({ "type": "start", "messageId": message_id })));
+        yield sse(json!({ "type": "start", "messageId": message_id() }));
 
         let mut request = TextRequest::builder()
             .messages(ui_messages_to_sdk_messages(input.messages))
@@ -117,19 +120,17 @@ fn chat_stream(
             .tools(state.tools.definitions())
             .build();
 
-        for step_index in 0..5 {
-            yield Ok(sse_json(json!({ "type": "start-step" })));
+        // Each step streams one model response. If it asks for tools, run them
+        // and build the next request with the assistant turn plus tool results.
+        for step_index in 0..MAX_MODEL_STEPS {
+            yield sse(json!({ "type": "start-step" }));
 
             let sdk_stream = match stream_text(&state.model, request.clone()).await {
                 Ok(stream) => stream,
                 Err(error) => {
-                    yield Ok(sse_json(json!({
-                        "type": "error",
-                        "errorText": format!("SDK stream failed: {error}")
-                    })));
-                    yield Ok(sse_json(json!({ "type": "finish-step" })));
-                    yield Ok(sse_json(json!({ "type": "finish", "finishReason": "error" })));
-                    yield Ok(sse_done());
+                    for chunk in error_chunks(format!("SDK stream failed: {error}")) {
+                        yield chunk;
+                    }
                     return;
                 }
             };
@@ -140,71 +141,25 @@ fn chat_stream(
             futures_util::pin_mut!(sdk_stream);
 
             while let Some(event) = sdk_stream.next().await {
-                match event {
-                    Ok(event) => {
-                        turn.push_event(event.clone());
-
-                        match event {
-                            StreamEvent::TextDelta(delta) => {
-                                if !text_started {
-                                    text_started = true;
-                                    yield Ok(sse_json(json!({
-                                        "type": "text-start",
-                                        "id": text_part_id,
-                                    })));
-                                }
-
-                                yield Ok(sse_json(json!({
-                                    "type": "text-delta",
-                                    "id": text_part_id,
-                                    "delta": delta,
-                                })));
-                            }
-                            StreamEvent::ToolCallStarted { id, name, .. } => {
-                                yield Ok(sse_json(json!({
-                                    "type": "tool-input-start",
-                                    "toolCallId": id,
-                                    "toolName": name,
-                                })));
-                            }
-                            StreamEvent::ToolCallDelta { id, index, input_delta } => {
-                                let tool_call_id = if id.is_empty() {
-                                    format!("tool_call_{index}")
-                                } else {
-                                    id
-                                };
-                                yield Ok(sse_json(json!({
-                                    "type": "tool-input-delta",
-                                    "toolCallId": tool_call_id,
-                                    "inputTextDelta": input_delta,
-                                })));
-                            }
-                            StreamEvent::ToolCallReady { id, name, input, .. } => {
-                                yield Ok(sse_json(json!({
-                                    "type": "tool-input-available",
-                                    "toolCallId": id,
-                                    "toolName": name,
-                                    "input": input,
-                                })));
-                            }
-                            StreamEvent::Finished { .. } => {}
-                        }
-                    }
+                let event = match event {
+                    Ok(event) => event,
                     Err(error) => {
-                        yield Ok(sse_json(json!({
-                            "type": "error",
-                            "errorText": format!("SDK event failed: {error}")
-                        })));
-                        yield Ok(sse_json(json!({ "type": "finish-step" })));
-                        yield Ok(sse_json(json!({ "type": "finish", "finishReason": "error" })));
-                        yield Ok(sse_done());
+                        for chunk in error_chunks(format!("SDK event failed: {error}")) {
+                            yield chunk;
+                        }
                         return;
                     }
+                };
+
+                turn.push_event(event.clone());
+
+                for chunk in ui_chunks_for_sdk_event(event, &text_part_id, &mut text_started) {
+                    yield chunk;
                 }
             }
 
             if text_started {
-                yield Ok(sse_json(json!({ "type": "text-end", "id": text_part_id })));
+                yield sse(json!({ "type": "text-end", "id": text_part_id }));
             }
 
             let accumulated_turn = turn.into_accumulated();
@@ -212,14 +167,14 @@ fn chat_stream(
             let tool_calls = accumulated_turn.tool_calls_cloned();
             let assistant_parts = accumulated_turn.parts;
 
-            yield Ok(sse_json(json!({ "type": "finish-step" })));
+            yield sse(json!({ "type": "finish-step" }));
 
             if tool_calls.is_empty() {
-                yield Ok(sse_json(json!({
+                yield sse(json!({
                     "type": "finish",
                     "finishReason": finish_reason_to_ai_sdk(&finish_reason),
-                })));
-                yield Ok(sse_done());
+                }));
+                yield done();
                 return;
             }
 
@@ -231,23 +186,91 @@ fn chat_stream(
                     Ok(output) => output,
                     Err(error) => json!({ "error": error.to_string() }),
                 };
-                yield Ok(sse_json(json!({
+                yield sse(json!({
                     "type": "tool-output-available",
                     "toolCallId": &call.id,
                     "output": output,
-                })));
+                }));
                 builder = builder.with_tool_result(&call.id, output.to_string());
             }
 
             request = builder.build();
         }
 
-        yield Ok(sse_json(json!({
+        yield sse(json!({
             "type": "error",
-            "errorText": "Stopped after 5 tool/model steps to avoid an infinite loop."
-        })));
-        yield Ok(sse_json(json!({ "type": "finish", "finishReason": "error" })));
-        yield Ok(sse_done());
+            "errorText": format!("Stopped after {MAX_MODEL_STEPS} tool/model steps to avoid an infinite loop.")
+        }));
+        yield sse(json!({ "type": "finish", "finishReason": "error" }));
+        yield done();
+    }
+}
+
+fn ui_chunks_for_sdk_event(
+    event: StreamEvent,
+    text_part_id: &str,
+    text_started: &mut bool,
+) -> Vec<SseChunk> {
+    match event {
+        StreamEvent::TextDelta(delta) => {
+            let mut chunks = Vec::new();
+
+            if !*text_started {
+                *text_started = true;
+                chunks.push(sse(json!({
+                    "type": "text-start",
+                    "id": text_part_id,
+                })));
+            }
+
+            chunks.push(sse(json!({
+                "type": "text-delta",
+                "id": text_part_id,
+                "delta": delta,
+            })));
+
+            chunks
+        }
+        StreamEvent::ToolCallStarted { id, name, .. } => vec![sse(json!({
+            "type": "tool-input-start",
+            "toolCallId": id,
+            "toolName": name,
+        }))],
+        StreamEvent::ToolCallDelta {
+            id,
+            index,
+            input_delta,
+        } => vec![sse(json!({
+            "type": "tool-input-delta",
+            "toolCallId": tool_call_id(id, index),
+            "inputTextDelta": input_delta,
+        }))],
+        StreamEvent::ToolCallReady {
+            id, name, input, ..
+        } => vec![sse(json!({
+            "type": "tool-input-available",
+            "toolCallId": id,
+            "toolName": name,
+            "input": input,
+        }))],
+        StreamEvent::Finished { .. } => Vec::new(),
+    }
+}
+
+fn error_chunks(error_text: String) -> Vec<SseChunk> {
+    vec![
+        sse(json!({ "type": "error", "errorText": error_text })),
+        sse(json!({ "type": "finish-step" })),
+        sse(json!({ "type": "finish", "finishReason": "error" })),
+        done(),
+    ]
+}
+
+fn tool_call_id(id: String, index: u32) -> String {
+    if id.is_empty() {
+        format!("tool_call_{index}")
+    } else {
+        id
     }
 }
 
@@ -354,12 +377,12 @@ fn fake_weather(location: &str) -> Value {
     }
 }
 
-fn sse_json(value: Value) -> Bytes {
-    Bytes::from(format!("data: {value}\n\n"))
+fn sse(value: Value) -> SseChunk {
+    Ok(Bytes::from(format!("data: {value}\n\n")))
 }
 
-fn sse_done() -> Bytes {
-    Bytes::from_static(b"data: [DONE]\n\n")
+fn done() -> SseChunk {
+    Ok(Bytes::from_static(b"data: [DONE]\n\n"))
 }
 
 fn message_id() -> String {

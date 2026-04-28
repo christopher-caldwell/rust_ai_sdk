@@ -108,6 +108,7 @@ fi
 
 name="$(package_value name)"
 version="$(package_value version)"
+tag="v$version"
 
 if [[ -z "$name" || -z "$version" ]]; then
   echo "Could not read package name/version from Cargo.toml." >&2
@@ -140,6 +141,10 @@ When you are ready:
   2. Ensure you are logged in: cargo login
   3. Commit these exact files.
   4. Run: scripts/publish-crate.sh --publish
+
+After publishing, tag the released commit:
+  git tag $tag
+  git push origin $tag
 MSG
   exit 0
 fi
@@ -169,6 +174,6 @@ cat <<MSG
 Published $name $version.
 
 Recommended next step:
-  git tag v$version
-  git push origin v$version
+  git tag $tag
+  git push origin $tag
 MSG

@@ -31,26 +31,26 @@ impl OpenAiModel {
     pub fn as_str(self) -> &'static str {
         match self {
             // GPT-5.4
-            Self::Gpt5_4     => "gpt-5.4",
+            Self::Gpt5_4 => "gpt-5.4",
             Self::Gpt5_4Mini => "gpt-5.4-mini",
             Self::Gpt5_4Nano => "gpt-5.4-nano",
-            Self::Gpt5_4Pro  => "gpt-5.4-pro",
+            Self::Gpt5_4Pro => "gpt-5.4-pro",
             // GPT-5.2
-            Self::Gpt5_2     => "gpt-5.2",
-            Self::Gpt5_2Pro  => "gpt-5.2-pro",
+            Self::Gpt5_2 => "gpt-5.2",
+            Self::Gpt5_2Pro => "gpt-5.2-pro",
             // GPT-5.1
-            Self::Gpt5_1     => "gpt-5.1",
+            Self::Gpt5_1 => "gpt-5.1",
             // GPT-5
-            Self::Gpt5       => "gpt-5",
-            Self::Gpt5Mini   => "gpt-5-mini",
-            Self::Gpt5Nano   => "gpt-5-nano",
-            Self::Gpt5Pro    => "gpt-5-pro",
+            Self::Gpt5 => "gpt-5",
+            Self::Gpt5Mini => "gpt-5-mini",
+            Self::Gpt5Nano => "gpt-5-nano",
+            Self::Gpt5Pro => "gpt-5-pro",
             // GPT-4.1
-            Self::Gpt4_1     => "gpt-4.1",
+            Self::Gpt4_1 => "gpt-4.1",
             Self::Gpt4_1Mini => "gpt-4.1-mini",
             Self::Gpt4_1Nano => "gpt-4.1-nano",
             // GPT-4o
-            Self::Gpt4o      => "gpt-4o",
+            Self::Gpt4o => "gpt-4o",
         }
     }
 }

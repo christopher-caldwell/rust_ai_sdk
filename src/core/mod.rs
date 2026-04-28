@@ -4,4 +4,5 @@ pub mod model;
 pub mod request;
 pub mod result;
 pub mod stream;
+pub mod tool;
 pub mod types;

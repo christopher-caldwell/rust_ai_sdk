@@ -20,15 +20,15 @@ impl AnthropicModel {
     pub fn as_str(self) -> &'static str {
         match self {
             // Opus
-            Self::Opus4_6   => "claude-opus-4-6",
-            Self::Opus4_5   => "claude-opus-4-5",
-            Self::Opus4_1   => "claude-opus-4-1",
+            Self::Opus4_6 => "claude-opus-4-6",
+            Self::Opus4_5 => "claude-opus-4-5",
+            Self::Opus4_1 => "claude-opus-4-1",
             // Sonnet
             Self::Sonnet4_6 => "claude-sonnet-4-6",
             Self::Sonnet4_5 => "claude-sonnet-4-5",
             Self::Sonnet4_0 => "claude-sonnet-4-0",
             // Haiku
-            Self::Haiku4_5  => "claude-haiku-4-5",
+            Self::Haiku4_5 => "claude-haiku-4-5",
         }
     }
 }

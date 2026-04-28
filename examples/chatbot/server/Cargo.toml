@@ -1,0 +1,19 @@
+[package]
+name = "chatbot-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ai_sdk = { version = "0.1.0", path = "../../.." }
+async-stream = "0.3.6"
+axum = "0.8.9"
+bytes = "1.11.1"
+dotenvy = "0.15.7"
+futures-util = "0.3.32"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+tokio = { version = "1.52.1", features = ["macros", "rt-multi-thread", "net"] }
+tower-http = "0.6.8"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+uuid = "1.23.1"

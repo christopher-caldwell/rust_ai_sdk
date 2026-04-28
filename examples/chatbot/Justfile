@@ -1,0 +1,13 @@
+default: server
+
+server:
+	cd server && just run
+
+server-check:
+	cd server && just check
+
+web:
+	cd web && npm run dev
+
+web-build:
+	cd web && npm run build

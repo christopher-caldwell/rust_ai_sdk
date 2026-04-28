@@ -10,6 +10,7 @@ pub enum FinishReason {
     Stop,
     Length,
     ContentFilter,
+    ToolUse,
     Other(String),
 }
 

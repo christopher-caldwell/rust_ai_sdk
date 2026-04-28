@@ -7,6 +7,7 @@ edition = "2024"
 ai_sdk = { path = ".." }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 futures-util = "0.3"
+serde_json = "1"
 
 [[bin]]
 name = "openai-generate"
@@ -17,9 +18,25 @@ name = "openai-stream"
 path = "src/openai/stream.rs"
 
 [[bin]]
+name = "openai-tool-use"
+path = "src/openai/tool_use.rs"
+
+[[bin]]
+name = "openai-tool-stream"
+path = "src/openai/tool_stream.rs"
+
+[[bin]]
+name = "openai-event-inspection"
+path = "src/openai/event_inspection.rs"
+
+[[bin]]
 name = "anthropic-generate"
 path = "src/anthropic/generate.rs"
 
 [[bin]]
 name = "anthropic-stream"
 path = "src/anthropic/stream.rs"
+
+[[bin]]
+name = "anthropic-tool-use"
+path = "src/anthropic/tool_use.rs"

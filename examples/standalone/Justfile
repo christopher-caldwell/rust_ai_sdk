@@ -12,6 +12,18 @@ openai-generate:
 openai-stream:
 	cargo run --bin openai-stream
 
+# Non-streaming OpenAI tool loop
+openai-tool-use:
+	cargo run --bin openai-tool-use
+
+# Streaming OpenAI tool loop
+openai-tool-stream:
+	cargo run --bin openai-tool-stream
+
+# Inspect OpenAI structured stream events
+openai-event-inspection:
+	cargo run --bin openai-event-inspection
+
 # ──────────────────────────────────────────────
 # Anthropic examples
 # ──────────────────────────────────────────────
@@ -23,3 +35,7 @@ anthropic-generate:
 # Streaming generation via Anthropic
 anthropic-stream:
 	cargo run --bin anthropic-stream
+
+# Non-streaming Anthropic tool loop
+anthropic-tool-use:
+	cargo run --bin anthropic-tool-use

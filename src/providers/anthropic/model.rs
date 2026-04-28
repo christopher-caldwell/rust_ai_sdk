@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 
 use crate::core::{
-    error::SdkError, model::LanguageModel, request::TextRequest, result::TextResult,
+    error::SdkError,
+    model::LanguageModel,
+    request::TextRequest,
+    result::{ChatResult, TextResult},
     stream::TextEventStream,
 };
 
@@ -18,6 +21,10 @@ impl AnthropicChatModel {
             client: AnthropicClient::new(api_key),
             model: model.into(),
         }
+    }
+
+    pub async fn generate_chat(&self, request: TextRequest) -> Result<ChatResult, SdkError> {
+        self.client.generate_chat(&self.model, &request).await
     }
 }
 

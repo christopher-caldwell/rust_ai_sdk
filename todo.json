@@ -1,0 +1,330 @@
+{
+  "schema_version": "1.0.0",
+  "project": {
+    "name": "rust_ai_sdk tool-aware chat evolution",
+    "repo": "christopher-caldwell/rust_ai_sdk",
+    "goal": "Extend the SDK from text-only generate/stream primitives into a provider-neutral, tool-aware chat SDK suitable for a Rust chat server behind a static Vite frontend.",
+    "non_goals": [
+      "Do not build the outer HTTP chat server in this repo",
+      "Do not add database persistence in this repo",
+      "Do not implement browser transport protocol adapters in this repo",
+      "Do not add resumable streams in this repo",
+      "Do not make MCP the first-class design target for v1"
+    ]
+  },
+  "current_state": {
+    "confirmed_from_repo": [
+      "TextRequest currently contains messages, max_output_tokens, and temperature",
+      "Message currently contains role plus plain string content",
+      "StreamEvent currently contains TextDelta and Finished",
+      "LanguageModel exposes generate and stream",
+      "TextResult returns final text plus finish_reason, usage, and response metadata",
+      "OpenAI provider supports generate and streaming already",
+      "OpenAI examples for generate and stream already exist"
+    ]
+  },
+  "artifacts_required": [
+    {
+      "id": "artifact_prompt_doc",
+      "type": "document",
+      "path_hint": "docs/tool_aware_chat_prompt.md",
+      "status": "done_in_this_delivery",
+      "description": "Detailed natural-language implementation prompt with context, goals, non-goals, required capabilities, examples, and acceptance criteria."
+    },
+    {
+      "id": "artifact_todo_json",
+      "type": "json",
+      "path_hint": "todo.json",
+      "status": "done_in_this_delivery",
+      "description": "Machine-readable stateful task list for continuing implementation."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Introduce structured message content model",
+      "status": "done",
+      "priority": "highest",
+      "dependencies": [],
+      "description": "Replace plain string message content with structured message parts that can represent text, tool calls, and tool results.",
+      "deliverables": [
+        "Updated core message types",
+        "Migration helpers for simple text-only messages",
+        "Unit tests for message modeling"
+      ],
+      "acceptance_criteria": [
+        "A message can represent plain text, tool calls, and tool results",
+        "Simple user/system/assistant text messages remain ergonomic to construct",
+        "Tests cover basic construction and serialization assumptions if serialization is present"
+      ]
+    },
+    {
+      "id": "T002",
+      "title": "Extend TextRequest with tool metadata",
+      "status": "done",
+      "priority": "highest",
+      "dependencies": ["T001"],
+      "description": "Add provider-neutral tool definitions and optional tool choice policy to the request model.",
+      "deliverables": [
+        "ToolDefinition type",
+        "ToolChoice representation",
+        "Updated TextRequest type",
+        "Convenience constructors for text-only requests"
+      ],
+      "acceptance_criteria": [
+        "A request can carry zero or more tool definitions",
+        "The core type does not depend on application callback functions",
+        "Existing text-only use remains straightforward"
+      ]
+    },
+    {
+      "id": "T003",
+      "title": "Expand StreamEvent for tool-aware streaming",
+      "status": "done",
+      "priority": "highest",
+      "dependencies": ["T001", "T002"],
+      "description": "Add stream events that can represent tool-call lifecycle information in addition to text deltas and completion.",
+      "deliverables": [
+        "Updated StreamEvent enum",
+        "Tool-related stream event payload types",
+        "Tests for mixed text and tool-call event sequences"
+      ],
+      "acceptance_criteria": [
+        "A caller can distinguish text generation from tool activity",
+        "The event model is provider-neutral",
+        "The final completion event still carries finish reason, usage, and response metadata"
+      ]
+    },
+    {
+      "id": "T004",
+      "title": "Add richer final chat result types",
+      "status": "done",
+      "priority": "high",
+      "dependencies": ["T001", "T002"],
+      "description": "Add a structured final result type that can return an assistant message in structured form rather than plain text only.",
+      "deliverables": [
+        "ChatResult or equivalent type",
+        "Decision on retaining TextResult as convenience or compatibility surface",
+        "Tests for final result semantics"
+      ],
+      "acceptance_criteria": [
+        "Final assistant output can contain structured message parts",
+        "Finish reason, usage, and response metadata remain available",
+        "Text-only consumers still have a clear path"
+      ]
+    },
+    {
+      "id": "T005",
+      "title": "Add runtime helper for one model turn with tool detection",
+      "status": "done",
+      "priority": "highest",
+      "dependencies": ["T001", "T002", "T003", "T004"],
+      "description": "Create a higher-level runtime helper that runs one model turn and returns either a completed response or a structured tool-request outcome.",
+      "deliverables": [
+        "Runtime helper API",
+        "Outcome type for completed vs tool-requested turn",
+        "Unit tests for text-only and tool-request outcomes"
+      ],
+      "acceptance_criteria": [
+        "A caller can run one turn and know whether tools need execution",
+        "The runtime does not own application tool policy",
+        "The API is simple enough for outer server use"
+      ]
+    },
+    {
+      "id": "T006",
+      "title": "Add runtime helper for model-tool-model continuation flow",
+      "status": "done",
+      "priority": "high",
+      "dependencies": ["T005"],
+      "description": "Provide a reusable helper or reference runtime pattern for continuing after tool execution.",
+      "deliverables": [
+        "Continuation API or helper types",
+        "Tests for multi-step model \u2192 tool \u2192 model flow"
+      ],
+      "acceptance_criteria": [
+        "An application can append tool results and continue cleanly",
+        "The runtime remains application-owned for actual tool execution",
+        "The behavior is covered by tests or deterministic examples"
+      ]
+    },
+    {
+      "id": "T007",
+      "title": "Implement OpenAI request translation for tools",
+      "status": "done",
+      "priority": "highest",
+      "dependencies": ["T001", "T002", "T003", "T004"],
+      "description": "Update the OpenAI adapter so it can translate tool-enabled requests and structured responses.",
+      "deliverables": [
+        "Request mapping updates",
+        "Response mapping updates",
+        "Provider tests for request/response translation"
+      ],
+      "acceptance_criteria": [
+        "OpenAI requests can include tools",
+        "OpenAI responses map into structured assistant messages",
+        "Provider-specific tests validate the mapping"
+      ]
+    },
+    {
+      "id": "T008",
+      "title": "Implement OpenAI streaming translation for tool-aware events",
+      "status": "done",
+      "priority": "highest",
+      "dependencies": ["T003", "T007"],
+      "description": "Update the OpenAI streaming adapter to emit structured tool-aware events while preserving existing finish handling and metadata behavior.",
+      "deliverables": [
+        "Streaming mapper updates",
+        "Mocked streaming tests with tool-related payloads"
+      ],
+      "acceptance_criteria": [
+        "Text and tool activity are surfaced as distinct stream events",
+        "Finish, usage, and metadata carry-forward continue to work",
+        "Error handling remains clear and tested"
+      ]
+    },
+    {
+      "id": "T009",
+      "title": "Create example: text-only generate",
+      "status": "done",
+      "priority": "medium",
+      "dependencies": ["T001", "T002", "T004"],
+      "description": "Add a runnable example demonstrating the new API for a simple non-tool generate flow.",
+      "deliverables": ["Runnable example source", "Short usage note"],
+      "acceptance_criteria": [
+        "The example runs",
+        "The API remains ergonomic for simple use",
+        "The example does not require tool support"
+      ]
+    },
+    {
+      "id": "T010",
+      "title": "Create example: text-only stream",
+      "status": "done",
+      "priority": "medium",
+      "dependencies": ["T003", "T008"],
+      "description": "Add a runnable example demonstrating streaming without tools using the new API.",
+      "deliverables": ["Runnable example source", "Short usage note"],
+      "acceptance_criteria": [
+        "The example runs",
+        "Streaming remains ergonomic for text-only use",
+        "The example makes the event flow obvious"
+      ]
+    },
+    {
+      "id": "T011",
+      "title": "Create example: tool-aware non-streaming turn",
+      "status": "done",
+      "priority": "high",
+      "dependencies": ["T005", "T007"],
+      "description": "Add a runnable example where a model requests a simple deterministic tool and the application feeds the result back.",
+      "deliverables": [
+        "Runnable example source",
+        "Simple fake deterministic tool implementation",
+        "Usage notes"
+      ],
+      "acceptance_criteria": [
+        "The example clearly demonstrates the tool request and continuation flow",
+        "The tool is deterministic and easy to understand",
+        "The example validates API ergonomics"
+      ]
+    },
+    {
+      "id": "T012",
+      "title": "Create example: tool-aware streaming turn",
+      "status": "done",
+      "priority": "highest",
+      "dependencies": ["T005", "T006", "T008"],
+      "description": "Add a runnable example that mirrors the actual target architecture: stream text, detect tool request, execute tool externally, continue, and stream final answer.",
+      "deliverables": [
+        "Runnable example source",
+        "Simple deterministic tool implementation",
+        "Output notes explaining event order"
+      ],
+      "acceptance_criteria": [
+        "The example is runnable",
+        "The flow resembles the intended Rust chat server architecture",
+        "A reader can understand how to wire the outer app after reading it"
+      ]
+    },
+    {
+      "id": "T013",
+      "title": "Create example: event inspection",
+      "status": "done",
+      "priority": "medium",
+      "dependencies": ["T003", "T008"],
+      "description": "Add a dedicated example that prints structured stream events for inspection and ergonomics review.",
+      "deliverables": ["Runnable example source", "Readable logging output"],
+      "acceptance_criteria": [
+        "The event model is easy to inspect from the example output",
+        "The example helps validate stream API design"
+      ]
+    },
+    {
+      "id": "T014",
+      "title": "Document example execution and expected behavior",
+      "status": "done",
+      "priority": "medium",
+      "dependencies": ["T009", "T010", "T011", "T012", "T013"],
+      "description": "Add minimal docs so the new examples are runnable and their intent is obvious.",
+      "deliverables": [
+        "Examples README or equivalent",
+        "Environment variable notes",
+        "Expected output notes where helpful"
+      ],
+      "acceptance_criteria": [
+        "A reader can run each example without guesswork",
+        "Tool examples clearly state what is mocked or deterministic"
+      ]
+    },
+    {
+      "id": "T015",
+      "title": "Extend second provider after core design stabilizes",
+      "status": "done",
+      "priority": "low",
+      "dependencies": ["T007", "T008", "T014"],
+      "description": "Apply the same abstractions to Anthropic or the second provider path once the core and OpenAI implementation are stable.",
+      "deliverables": [
+        "Provider mapping updates",
+        "Provider tests",
+        "Optional provider example if useful"
+      ],
+      "acceptance_criteria": [
+        "The second provider can participate in the same core abstractions",
+        "The core is not OpenAI-specific"
+      ]
+    }
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "title": "Core type evolution complete",
+      "tasks": ["T001", "T002", "T003", "T004"],
+      "status": "done"
+    },
+    {
+      "id": "M2",
+      "title": "Runtime loop support complete",
+      "tasks": ["T005", "T006"],
+      "status": "done"
+    },
+    {
+      "id": "M3",
+      "title": "OpenAI provider support complete",
+      "tasks": ["T007", "T008"],
+      "status": "done"
+    },
+    {
+      "id": "M4",
+      "title": "Examples and ergonomics validation complete",
+      "tasks": ["T009", "T010", "T011", "T012", "T013", "T014"],
+      "status": "done"
+    },
+    {
+      "id": "M5",
+      "title": "Second provider adaptation complete",
+      "tasks": ["T015"],
+      "status": "done"
+    }
+  ]
+}

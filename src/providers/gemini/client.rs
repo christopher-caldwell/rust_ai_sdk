@@ -244,10 +244,10 @@ fn process_stream_response(
     for candidate in resp.candidates {
         if let Some(content) = candidate.content {
             for part in content.parts {
-                if let Some(text) = part.text {
-                    if !text.is_empty() {
-                        events.push(Ok(StreamEvent::TextDelta(text)));
-                    }
+                if let Some(text) = part.text
+                    && !text.is_empty()
+                {
+                    events.push(Ok(StreamEvent::TextDelta(text)));
                 }
                 if let Some(call) = part.function_call {
                     let index = acc.next_tool_index;
@@ -287,10 +287,10 @@ fn process_stream_response(
             }
         }
 
-        if acc.finish_reason != Some(FinishReason::ToolUse) {
-            if let Some(reason) = candidate.finish_reason {
-                acc.finish_reason = Some(map_finish_reason(&reason));
-            }
+        if acc.finish_reason != Some(FinishReason::ToolUse)
+            && let Some(reason) = candidate.finish_reason
+        {
+            acc.finish_reason = Some(map_finish_reason(&reason));
         }
     }
 

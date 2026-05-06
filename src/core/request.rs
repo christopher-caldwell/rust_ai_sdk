@@ -1,7 +1,7 @@
 use super::message::Message;
 use super::tool::{ToolChoice, ToolDefinition};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TextRequest {
     pub messages: Vec<Message>,
     pub max_output_tokens: Option<u32>,
@@ -57,18 +57,6 @@ impl TextRequest {
     pub fn with_tool_choice(mut self, choice: ToolChoice) -> Self {
         self.tool_choice = Some(choice);
         self
-    }
-}
-
-impl Default for TextRequest {
-    fn default() -> Self {
-        Self {
-            messages: vec![],
-            max_output_tokens: None,
-            temperature: None,
-            tools: vec![],
-            tool_choice: None,
-        }
     }
 }
 

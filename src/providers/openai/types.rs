@@ -393,10 +393,10 @@ pub(super) fn chat_response_to_chat_result(
 
     let mut parts: Vec<MessagePart> = Vec::new();
 
-    if let Some(text) = &choice.message.content {
-        if !text.is_empty() {
-            parts.push(MessagePart::Text(text.clone()));
-        }
+    if let Some(text) = &choice.message.content
+        && !text.is_empty()
+    {
+        parts.push(MessagePart::Text(text.clone()));
     }
 
     if let Some(tool_calls) = &choice.message.tool_calls {

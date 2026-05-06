@@ -512,10 +512,10 @@ pub(super) fn gemini_response_to_chat_result(
     let mut parts = Vec::new();
     if let Some(content) = &choice.content {
         for part in &content.parts {
-            if let Some(text) = &part.text {
-                if !text.is_empty() {
-                    parts.push(MessagePart::Text(text.clone()));
-                }
+            if let Some(text) = &part.text
+                && !text.is_empty()
+            {
+                parts.push(MessagePart::Text(text.clone()));
             }
             if let Some(call) = &part.function_call {
                 let id = call

@@ -357,11 +357,11 @@ pub(super) fn anthropic_response_to_chat_result(
             }
             "tool_use" => {
                 if let (Some(id), Some(name)) = (&block.id, &block.name) {
-                    parts.push(MessagePart::ToolCall(ToolCall {
-                        id: id.clone(),
-                        name: name.clone(),
-                        input: block.input.clone().unwrap_or(Value::Null),
-                    }));
+                    parts.push(MessagePart::ToolCall(ToolCall::new(
+                        id.clone(),
+                        name.clone(),
+                        block.input.clone().unwrap_or(Value::Null),
+                    )));
                 }
             }
             _ => {}
@@ -481,11 +481,11 @@ mod tests {
     fn test_message_tool_call_to_anthropic() {
         let req = TextRequest {
             messages: vec![Message::assistant_parts(vec![MessagePart::ToolCall(
-                ToolCall {
-                    id: "toolu_1".to_string(),
-                    name: "get_weather".to_string(),
-                    input: serde_json::json!({"location": "Paris"}),
-                },
+                ToolCall::new(
+                    "toolu_1",
+                    "get_weather",
+                    serde_json::json!({"location": "Paris"}),
+                ),
             )])],
             max_output_tokens: None,
             temperature: None,

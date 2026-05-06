@@ -30,6 +30,7 @@ pub enum StreamEvent {
         name: String,
         index: u32,
         input: Value,
+        provider_metadata: Option<Value>,
     },
 }
 

@@ -403,11 +403,11 @@ pub(super) fn chat_response_to_chat_result(
         for tc in tool_calls {
             let input: Value = serde_json::from_str(&tc.function.arguments)
                 .unwrap_or(Value::String(tc.function.arguments.clone()));
-            parts.push(MessagePart::ToolCall(ToolCall {
-                id: tc.id.clone(),
-                name: tc.function.name.clone(),
+            parts.push(MessagePart::ToolCall(ToolCall::new(
+                tc.id.clone(),
+                tc.function.name.clone(),
                 input,
-            }));
+            )));
         }
     }
 
@@ -608,11 +608,11 @@ mod tests {
     #[test]
     fn test_message_tool_call_part_to_openai() {
         let msg = Message::assistant_parts(vec![MessagePart::ToolCall(
-            crate::core::message::ToolCall {
-                id: "call_123".to_string(),
-                name: "weather".to_string(),
-                input: json!({"location": "Paris"}),
-            },
+            crate::core::message::ToolCall::new(
+                "call_123",
+                "weather",
+                json!({"location": "Paris"}),
+            ),
         )]);
 
         let msgs = message_to_chat_messages(&msg);

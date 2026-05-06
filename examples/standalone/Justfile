@@ -39,3 +39,19 @@ anthropic-stream:
 # Non-streaming Anthropic tool loop
 anthropic-tool-use:
 	cargo run --bin anthropic-tool-use
+
+# ──────────────────────────────────────────────
+# Gemini examples
+# ──────────────────────────────────────────────
+
+# Non-streaming generation via Gemini
+gemini-generate:
+	cargo run --bin gemini-generate
+
+# Streaming generation via Gemini
+gemini-stream:
+	cargo run --bin gemini-stream
+
+# Non-streaming Gemini tool loop
+gemini-tool-use:
+	cargo run --bin gemini-tool-use

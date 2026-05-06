@@ -349,6 +349,7 @@ fn process_chunk(
                 name: buf.name,
                 index,
                 input,
+                provider_metadata: None,
             }));
         }
 
@@ -915,6 +916,7 @@ mod tests {
                     name,
                     index,
                     input,
+                    ..
                 } => {
                     assert_eq!(id, "call_1");
                     assert_eq!(name, "get_weather");

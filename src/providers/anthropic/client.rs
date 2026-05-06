@@ -347,6 +347,7 @@ fn process_event(data: &str, acc: &mut StreamAccumulator) -> Vec<Result<StreamEv
                     name: buffer.name,
                     index: evt.index,
                     input,
+                    provider_metadata: None,
                 })]
             }
             Err(e) => vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
@@ -633,6 +634,7 @@ mod tests {
                 name,
                 index,
                 input,
+                ..
             } => {
                 assert_eq!(id, "toolu_1");
                 assert_eq!(name, "get_weather");

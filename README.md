@@ -12,7 +12,7 @@ but to bring the same practical composition model to Rust servers.
 
 - **Provider-neutral chat primitives**: shared `Message`, `TextRequest`,
   `ChatResult`, `StreamEvent`, and tool-call types.
-- **OpenAI and Anthropic providers**: generate text, generate structured chat
+- **OpenAI, Anthropic, and Gemini providers**: generate text, generate structured chat
   turns, and stream provider events through a common interface.
 - **Streaming text and tools**: text deltas, tool-call starts, argument deltas,
   ready tool calls, usage, finish reason, and response metadata.
@@ -46,6 +46,27 @@ Provider examples require API keys:
 ```sh
 export OPENAI_API_KEY="..."
 export ANTHROPIC_API_KEY="..."
+export GEMINI_API_KEY="..."
+```
+
+The same interface works with Gemini:
+
+```rust
+use another_ai_sdk::prelude::*;
+use another_ai_sdk::providers::gemini::{GeminiChatModel, GeminiModel};
+
+#[tokio::main]
+async fn main() -> Result<(), SdkError> {
+    let model = GeminiChatModel::new(
+        std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY is required"),
+        GeminiModel::Gemini2_5Flash,
+    );
+
+    let result = generate_text(&model, TextRequest::prompt("Write a haiku about Rust.")).await?;
+    println!("{}", result.text);
+
+    Ok(())
+}
 ```
 
 ## Basic Usage
@@ -198,6 +219,7 @@ cd examples/standalone
 cargo run --bin openai-stream
 cargo run --bin openai-tool-use
 cargo run --bin anthropic-stream
+cargo run --bin gemini-stream
 ```
 
 Run the chatbot example:

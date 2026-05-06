@@ -49,6 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 name,
                 index,
                 input,
+                ..
             } => {
                 println!(
                     "ToolCallReady(index={index}, id={id:?}, name={name:?}, input={input})"

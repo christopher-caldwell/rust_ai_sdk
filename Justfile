@@ -23,3 +23,9 @@ test:
 # Format and lint the codebase
 lint: fmt clippy
 
+# Publish the package
+publish-dry:
+    sh scripts/publish-crate.sh
+
+publish:
+    sh scripts/publish-crate.sh --publish

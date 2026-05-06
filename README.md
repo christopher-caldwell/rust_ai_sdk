@@ -232,35 +232,3 @@ just web
 
 The chatbot server is Axum, the frontend is Vite + React, and the browser uses
 `@ai-sdk/react` with the Vercel AI SDK UI message stream protocol.
-
-## Publishing
-
-Publishing to crates.io is permanent for each version: once `0.1.0` is
-uploaded, that version cannot be overwritten or deleted. A broken release can
-only be yanked.
-
-Before the first publish:
-
-1. Create a crates.io account and verify your email.
-2. Create an API token at <https://crates.io/me>.
-3. Run `cargo login` and paste the token.
-4. Choose a license and add `license = "..."` or `license-file = "..."` to
-   `Cargo.toml`.
-5. Run the publish preflight script:
-
-```sh
-scripts/publish-crate.sh
-```
-
-If the dry run passes, publish with:
-
-```sh
-scripts/publish-crate.sh --publish
-```
-
-## Current Scope
-
-This SDK owns provider-neutral model requests, provider translation, streaming
-events, and runtime helpers. It does not own HTTP routing, authentication,
-persistence, rate limits, or production tool policy. Keep those concerns in
-your application layer.

@@ -81,11 +81,7 @@ mod tests {
         assert_eq!(registry.definitions()[0].name, "echo");
 
         let output = registry
-            .execute(&ToolCall {
-                id: "call_1".to_string(),
-                name: "echo".to_string(),
-                input: json!({ "value": 42 }),
-            })
+            .execute(&ToolCall::new("call_1", "echo", json!({ "value": 42 })))
             .await
             .unwrap();
 
@@ -97,11 +93,7 @@ mod tests {
         let registry = ToolRegistry::new();
 
         let error = registry
-            .execute(&ToolCall {
-                id: "call_1".to_string(),
-                name: "missing".to_string(),
-                input: Value::Null,
-            })
+            .execute(&ToolCall::new("call_1", "missing", Value::Null))
             .await
             .unwrap_err();
 

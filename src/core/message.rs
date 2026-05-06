@@ -22,6 +22,24 @@ pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub input: Value,
+    pub provider_metadata: Option<Value>,
+}
+
+impl ToolCall {
+    pub fn new(id: impl Into<String>, name: impl Into<String>, input: Value) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            input,
+            provider_metadata: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_provider_metadata(mut self, metadata: Value) -> Self {
+        self.provider_metadata = Some(metadata);
+        self
+    }
 }
 
 /// The result of executing a tool, sent back as a user-role message.

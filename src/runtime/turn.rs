@@ -97,6 +97,7 @@ struct ToolCallBuffer {
     name: String,
     arguments: String,
     input: Option<Value>,
+    provider_metadata: Option<Value>,
 }
 
 /// Accumulates a provider-neutral stream into one assistant turn.
@@ -137,8 +138,9 @@ impl TurnAccumulator {
                 name,
                 index,
                 input,
+                provider_metadata,
             } => {
-                self.ready_tool_call(index, id, name, input);
+                self.ready_tool_call(index, id, name, input, provider_metadata);
             }
             StreamEvent::Finished {
                 finish_reason,
@@ -174,11 +176,9 @@ impl TurnAccumulator {
                             serde_json::from_str(&buf.arguments)
                                 .unwrap_or(Value::String(buf.arguments.clone()))
                         });
-                        parts.push(MessagePart::ToolCall(ToolCall {
-                            id: buf.id,
-                            name: buf.name,
-                            input,
-                        }));
+                        let mut call = ToolCall::new(buf.id, buf.name, input);
+                        call.provider_metadata = buf.provider_metadata;
+                        parts.push(MessagePart::ToolCall(call));
                     }
                 }
             }
@@ -229,6 +229,7 @@ impl TurnAccumulator {
             name: String::new(),
             arguments: String::new(),
             input: None,
+            provider_metadata: None,
         });
         buffer.id = id;
         buffer.name = name;
@@ -241,6 +242,7 @@ impl TurnAccumulator {
             name: String::new(),
             arguments: String::new(),
             input: None,
+            provider_metadata: None,
         });
         if !id.is_empty() {
             buffer.id = id;
@@ -248,17 +250,26 @@ impl TurnAccumulator {
         buffer.arguments.push_str(&delta);
     }
 
-    fn ready_tool_call(&mut self, index: u32, id: String, name: String, input: Value) {
+    fn ready_tool_call(
+        &mut self,
+        index: u32,
+        id: String,
+        name: String,
+        input: Value,
+        provider_metadata: Option<Value>,
+    ) {
         self.ensure_tool_slot(index);
         let buffer = self.tool_buffers.entry(index).or_insert(ToolCallBuffer {
             id: String::new(),
             name: String::new(),
             arguments: String::new(),
             input: None,
+            provider_metadata: None,
         });
         buffer.id = id;
         buffer.name = name;
         buffer.input = Some(input);
+        buffer.provider_metadata = provider_metadata;
     }
 
     fn ensure_tool_slot(&mut self, index: u32) {
@@ -439,6 +450,7 @@ mod tests {
                 name: "get_weather".to_string(),
                 index: 0,
                 input: serde_json::json!({"location": "Paris"}),
+                provider_metadata: None,
             },
             StreamEvent::Finished {
                 finish_reason: FinishReason::ToolUse,
@@ -469,6 +481,7 @@ mod tests {
                 name: "get_weather".to_string(),
                 index: 0,
                 input: serde_json::json!({"location": "Paris"}),
+                provider_metadata: None,
             },
             StreamEvent::Finished {
                 finish_reason: FinishReason::ToolUse,
@@ -493,6 +506,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_run_turn_preserves_tool_call_provider_metadata() {
+        let metadata = serde_json::json!({"provider": {"signature": "sig_1"}});
+        let model = MockModel::new(vec![
+            StreamEvent::ToolCallReady {
+                id: "call_ready".to_string(),
+                name: "get_weather".to_string(),
+                index: 0,
+                input: serde_json::json!({"location": "Paris"}),
+                provider_metadata: Some(metadata.clone()),
+            },
+            StreamEvent::Finished {
+                finish_reason: FinishReason::ToolUse,
+                usage: None,
+                response: meta(),
+            },
+        ]);
+
+        let outcome = run_turn(&model, TextRequest::prompt("weather?"))
+            .await
+            .unwrap();
+
+        match outcome {
+            TurnOutcome::ToolsRequired { tool_calls, .. } => {
+                assert_eq!(tool_calls[0].provider_metadata.as_ref(), Some(&metadata));
+            }
+            TurnOutcome::Completed(_) => panic!("Expected ToolsRequired"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_run_turn_ready_input_overrides_partial_delta_buffer() {
         let model = MockModel::new(vec![
             StreamEvent::ToolCallStarted {
@@ -510,6 +553,7 @@ mod tests {
                 name: "get_weather".to_string(),
                 index: 0,
                 input: serde_json::json!({"location": "Paris"}),
+                provider_metadata: None,
             },
             StreamEvent::Finished {
                 finish_reason: FinishReason::ToolUse,
@@ -579,11 +623,7 @@ mod tests {
         let request = TextRequest::prompt("original");
         let parts = vec![
             MessagePart::Text("thinking...".to_string()),
-            MessagePart::ToolCall(ToolCall {
-                id: "c1".to_string(),
-                name: "tool".to_string(),
-                input: serde_json::json!({}),
-            }),
+            MessagePart::ToolCall(ToolCall::new("c1", "tool", serde_json::json!({}))),
         ];
 
         let continuation = ContinuationBuilder::from_request(request)

@@ -40,3 +40,15 @@ path = "src/anthropic/stream.rs"
 [[bin]]
 name = "anthropic-tool-use"
 path = "src/anthropic/tool_use.rs"
+
+[[bin]]
+name = "gemini-generate"
+path = "src/gemini/generate.rs"
+
+[[bin]]
+name = "gemini-stream"
+path = "src/gemini/stream.rs"
+
+[[bin]]
+name = "gemini-tool-use"
+path = "src/gemini/tool_use.rs"

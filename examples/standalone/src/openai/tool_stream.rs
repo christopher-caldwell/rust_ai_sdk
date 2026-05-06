@@ -119,6 +119,7 @@ async fn stream_one_turn(
                 name,
                 index,
                 input,
+                ..
             } => {
                 println!("[tool-call-ready:{}:{} {}]", index, name, input);
                 tool_buffers.insert(
@@ -151,11 +152,7 @@ async fn stream_one_turn(
     for (_, buffer) in tool_buffers {
         let input = serde_json::from_str(&buffer.input)
             .unwrap_or_else(|_| Value::String(buffer.input.clone()));
-        let call = ToolCall {
-            id: buffer.id,
-            name: buffer.name,
-            input,
-        };
+        let call = ToolCall::new(buffer.id, buffer.name, input);
         assistant_parts.push(MessagePart::ToolCall(call.clone()));
         tool_calls.push(call);
     }

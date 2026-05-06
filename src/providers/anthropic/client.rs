@@ -281,16 +281,13 @@ fn process_event(data: &str, acc: &mut StreamAccumulator) -> Vec<Result<StreamEv
 
         "content_block_delta" => match serde_json::from_str::<ContentBlockDeltaEvent>(data) {
             Ok(evt) => {
-                if let Some(text) = evt.delta.text {
-                    if !text.is_empty() {
-                        return vec![Ok(StreamEvent::TextDelta(text))];
-                    }
+                if let Some(text) = evt.delta.text
+                    && !text.is_empty()
+                {
+                    return vec![Ok(StreamEvent::TextDelta(text))];
                 }
                 if let Some(delta) = evt.delta.partial_json {
-                    let buffer = acc
-                        .tool_call_buffers
-                        .entry(evt.index)
-                        .or_insert_with(ToolCallBuffer::default);
+                    let buffer = acc.tool_call_buffers.entry(evt.index).or_default();
                     buffer.input.push_str(&delta);
                     if !delta.is_empty() {
                         return vec![Ok(StreamEvent::ToolCallDelta {
@@ -308,10 +305,10 @@ fn process_event(data: &str, acc: &mut StreamAccumulator) -> Vec<Result<StreamEv
         "content_block_start" => match serde_json::from_str::<ContentBlockStartEvent>(data) {
             Ok(evt) => match evt.content_block {
                 ContentBlockStart::Text { text } => {
-                    if let Some(text) = text {
-                        if !text.is_empty() {
-                            return vec![Ok(StreamEvent::TextDelta(text))];
-                        }
+                    if let Some(text) = text
+                        && !text.is_empty()
+                    {
+                        return vec![Ok(StreamEvent::TextDelta(text))];
                     }
                     vec![]
                 }

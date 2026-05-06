@@ -313,10 +313,10 @@ fn process_chunk(
     // Collect text deltas and check for finish_reason across choices.
     let mut chunk_finish_reason: Option<String> = None;
     for choice in &chunk.choices {
-        if let Some(content) = &choice.delta.content {
-            if !content.is_empty() {
-                events.push(Ok(StreamEvent::TextDelta(content.clone())));
-            }
+        if let Some(content) = &choice.delta.content
+            && !content.is_empty()
+        {
+            events.push(Ok(StreamEvent::TextDelta(content.clone())));
         }
         if let Some(tool_calls) = &choice.delta.tool_calls {
             for tool_call in tool_calls {
@@ -385,10 +385,10 @@ fn process_tool_call_delta(
     if let Some(id) = &delta.id {
         buf.id = id.clone();
     }
-    if let Some(function) = &delta.function {
-        if let Some(name) = &function.name {
-            buf.name = name.clone();
-        }
+    if let Some(function) = &delta.function
+        && let Some(name) = &function.name
+    {
+        buf.name = name.clone();
     }
 
     if !buf.started_emitted && !buf.name.is_empty() {
@@ -400,17 +400,16 @@ fn process_tool_call_delta(
         buf.started_emitted = true;
     }
 
-    if let Some(function) = &delta.function {
-        if let Some(arguments) = &function.arguments {
-            if !arguments.is_empty() {
-                buf.arguments.push_str(arguments);
-                events.push(Ok(StreamEvent::ToolCallDelta {
-                    id: buf.id.clone(),
-                    index: delta.index,
-                    input_delta: arguments.clone(),
-                }));
-            }
-        }
+    if let Some(function) = &delta.function
+        && let Some(arguments) = &function.arguments
+        && !arguments.is_empty()
+    {
+        buf.arguments.push_str(arguments);
+        events.push(Ok(StreamEvent::ToolCallDelta {
+            id: buf.id.clone(),
+            index: delta.index,
+            input_delta: arguments.clone(),
+        }));
     }
 }
 
@@ -871,7 +870,7 @@ mod tests {
         }
 
         let evt2 = stream.next().await.unwrap();
-        assert!(matches!(evt2, Err(_)));
+        assert!(evt2.is_err());
     }
 
     #[tokio::test]

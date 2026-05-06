@@ -1,6 +1,6 @@
 [package]
 name = "another-ai-sdk"
-version = "0.0.1"
+version = "0.0.2"
 license = "MIT"
 edition = "2024"
 description = "Provider-neutral Rust SDK for streaming chat and tool calling."

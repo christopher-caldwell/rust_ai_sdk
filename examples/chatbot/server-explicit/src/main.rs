@@ -1,13 +1,14 @@
 use std::net::SocketAddr;
 
 use another_ai_sdk::{
-    core::{error::SdkError, tool::ToolDefinition},
+    core::{error::SdkError, request::TextRequest, tool::ToolDefinition},
     providers::openai::model::OpenAiChatModel,
     runtime::{
         message_stream::{
             MESSAGE_STREAM_CACHE_CONTROL, MESSAGE_STREAM_CONTENT_TYPE,
-            MESSAGE_STREAM_PROTOCOL_HEADER, MESSAGE_STREAM_PROTOCOL_VERSION, MessageStreamOptions,
-            MessageStreamRequest, compose_text_request, stream_text_messages,
+            MESSAGE_STREAM_PROTOCOL_HEADER, MESSAGE_STREAM_PROTOCOL_VERSION, MessageStreamChunk,
+            MessageStreamOptions, MessageStreamRequest, messages_to_sdk_messages,
+            stream_text_messages,
         },
         tools::ToolRegistry,
     },
@@ -34,19 +35,11 @@ struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenvy::dotenv().ok();
+    load_env();
     fmt::init();
 
-    let openai_api_key =
-        std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set in server/.env");
-    let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4.1-mini".to_string());
-    let port = std::env::var("PORT")
-        .ok()
-        .and_then(|value| value.parse::<u16>().ok())
-        .unwrap_or(3001);
-
     let state = AppState {
-        model: OpenAiChatModel::new(openai_api_key, model),
+        model: OpenAiChatModel::new(openai_api_key(), openai_model()),
         tools: demo_tool_registry(),
     };
 
@@ -55,9 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/chat", post(chat_handler))
         .with_state(state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port()));
     let listener = TcpListener::bind(addr).await?;
-    tracing::info!("chatbot server listening on http://{addr}");
+    tracing::info!("explicit chatbot server listening on http://{addr}");
 
     axum::serve(listener, app).await?;
     Ok(())
@@ -68,14 +61,40 @@ async fn chat_handler(
     Json(input): Json<MessageStreamRequest>,
 ) -> impl IntoResponse {
     let options = MessageStreamOptions::default();
-    let request = compose_text_request(input, SYSTEM_PROMPT, options, state.tools.definitions());
+    let request = build_text_request(input, &state.tools, options);
     let stream = stream_text_messages(state.model, request, state.tools, options);
 
+    sse_response(stream)
+}
+
+fn build_text_request(
+    input: MessageStreamRequest,
+    tools: &ToolRegistry,
+    options: MessageStreamOptions,
+) -> TextRequest {
+    let messages = messages_to_sdk_messages(input, SYSTEM_PROMPT);
+    let tool_definitions = tools.definitions();
+
+    TextRequest::builder()
+        .messages(messages)
+        .max_output_tokens(options.max_output_tokens)
+        .temperature(options.temperature)
+        .tools(tool_definitions)
+        .build()
+}
+
+fn sse_response<S>(stream: S) -> Response
+where
+    S: futures_core::Stream<Item = MessageStreamChunk> + Send + 'static,
+{
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, MESSAGE_STREAM_CONTENT_TYPE)
         .header(header::CACHE_CONTROL, MESSAGE_STREAM_CACHE_CONTROL)
-        .header(MESSAGE_STREAM_PROTOCOL_HEADER, MESSAGE_STREAM_PROTOCOL_VERSION)
+        .header(
+            MESSAGE_STREAM_PROTOCOL_HEADER,
+            MESSAGE_STREAM_PROTOCOL_VERSION,
+        )
         .body(Body::from_stream(stream))
         .unwrap()
 }
@@ -151,4 +170,24 @@ fn fake_weather(location: &str) -> Value {
     } else {
         json!({ "location": location, "forecast": "clear demo skies", "temperature_c": 21 })
     }
+}
+
+fn load_env() {
+    dotenvy::dotenv().ok();
+    dotenvy::from_path("../server/.env").ok();
+}
+
+fn openai_api_key() -> String {
+    std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set in .env")
+}
+
+fn openai_model() -> String {
+    std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4.1-mini".to_string())
+}
+
+fn port() -> u16 {
+    std::env::var("PORT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(3001)
 }

@@ -1,0 +1,9 @@
+set dotenv-load
+
+default: run
+
+run:
+	cargo run
+
+check:
+	cargo check

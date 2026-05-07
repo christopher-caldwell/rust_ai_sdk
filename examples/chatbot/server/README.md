@@ -1,12 +1,18 @@
 # Chatbot Server Example
 
 This is a small Axum server that connects the Vite chat UI to the local
-`another-ai-sdk` crate. It intentionally keeps the app code thin: one chat route,
-provider setup, request/response adapters, and a couple of demo tools.
+`another-ai-sdk` crate. It keeps the app code focused on provider setup, route
+wrapping, and demo tools while the optional `message-stream` SDK feature owns
+the reusable AI SDK UI-message stream protocol work.
 
-The important idea is that the browser talks in Vercel AI SDK UI-message
-format, while the Rust server talks to this SDK in provider-neutral
-`TextRequest`, `Message`, `ToolDefinition`, and `StreamEvent` types.
+For a less black-box version of the same server, see
+`examples/chatbot/server-explicit`. That example uses the same stream protocol
+helpers, but builds the `TextRequest` explicitly instead of calling
+`compose_text_request(...)`.
+
+The browser talks in AI SDK UI-message JSON and SSE chunks. The Rust server
+talks to the SDK in provider-neutral `TextRequest`, `ToolDefinition`, and
+`StreamEvent` types.
 
 ## Run It
 
@@ -37,12 +43,28 @@ The server listens on `http://127.0.0.1:3001`.
 Routes:
 
 - `GET /health` returns `ok`.
-- `POST /api/chat` streams a Vercel AI SDK UI message response.
+- `POST /api/chat` streams an AI SDK UI-message response.
+
+## Dependency
+
+The server enables the optional stream add-on:
+
+```toml
+another-ai-sdk = { path = "../../..", features = ["message-stream"] }
+```
+
+That feature provides:
+
+- `MessageStreamRequest`
+- `MessageStreamOptions`
+- `compose_text_request(...)`
+- `stream_text_messages(...)`
+- SSE protocol header constants
 
 ## Request Shape
 
 The frontend uses `useChat()` from `@ai-sdk/react` with `DefaultChatTransport`.
-That transport sends a JSON body containing UI messages:
+That transport sends UI messages like:
 
 ```json
 {
@@ -56,63 +78,13 @@ That transport sends a JSON body containing UI messages:
 }
 ```
 
-The server defines a minimal compatible request type:
+The Axum handler deserializes that body directly into `MessageStreamRequest`.
+For this first version, the SDK adapter converts text parts and ignores other
+UI parts.
 
-```rust
-struct ChatRequest {
-    messages: Vec<UiMessage>,
-}
+## Handler Flow
 
-struct UiMessage {
-    role: String,
-    parts: Vec<UiPart>,
-}
-```
-
-For this demo, only text parts are converted. Tool history and other UI parts
-are ignored because the server executes tools itself and owns the trusted tool
-results.
-
-## Response Shape
-
-The response is Server-Sent Events using the AI SDK UI message stream protocol.
-The required compatibility header is:
-
-```http
-x-vercel-ai-ui-message-stream: v1
-```
-
-The server writes chunks like:
-
-```text
-data: {"type":"start","messageId":"msg_..."}
-
-data: {"type":"start-step"}
-
-data: {"type":"text-start","id":"text_0"}
-data: {"type":"text-delta","id":"text_0","delta":"Hello"}
-data: {"type":"text-end","id":"text_0"}
-
-data: {"type":"finish-step"}
-data: {"type":"finish","finishReason":"stop"}
-data: [DONE]
-```
-
-For tool calls, the server also emits:
-
-```text
-data: {"type":"tool-input-start","toolCallId":"call_...","toolName":"get_weather"}
-data: {"type":"tool-input-delta","toolCallId":"call_...","inputTextDelta":"..."}
-data: {"type":"tool-input-available","toolCallId":"call_...","toolName":"get_weather","input":{"location":"Paris"}}
-data: {"type":"tool-output-available","toolCallId":"call_...","output":{"forecast":"mild and cloudy"}}
-```
-
-The frontend can render these as tool parts without inventing a custom JSON or
-NDJSON protocol.
-
-## Server Flow
-
-The route is:
+The route stays framework-specific:
 
 ```rust
 Router::new()
@@ -120,46 +92,54 @@ Router::new()
     .route("/api/chat", post(chat_handler))
 ```
 
-`chat_handler` does not buffer a full response. It immediately returns an Axum
-`Body::from_stream(...)` with SSE headers:
+The handler composes a provider-neutral SDK request, starts the byte stream,
+and wraps it in an Axum response:
 
 ```rust
+let options = MessageStreamOptions::default();
+let request = compose_text_request(input, SYSTEM_PROMPT, options, state.tools.definitions());
+let stream = stream_text_messages(state.model, request, state.tools, options);
+
 Response::builder()
-    .header(header::CONTENT_TYPE, "text/event-stream")
-    .header(header::CACHE_CONTROL, "no-cache")
-    .header("x-vercel-ai-ui-message-stream", "v1")
+    .header(header::CONTENT_TYPE, MESSAGE_STREAM_CONTENT_TYPE)
+    .header(header::CACHE_CONTROL, MESSAGE_STREAM_CACHE_CONTROL)
+    .header(MESSAGE_STREAM_PROTOCOL_HEADER, MESSAGE_STREAM_PROTOCOL_VERSION)
     .body(Body::from_stream(stream))
 ```
 
-The actual orchestration happens in `chat_stream(...)`.
+The SDK add-on is framework-independent because it emits
+`Stream<Item = MessageStreamChunk>` where each chunk is SSE-formatted
+`bytes::Bytes`. Axum only supplies JSON extraction, headers, and body wrapping.
 
-## Request Adapter
+## Stream Behavior
 
-`ui_messages_to_sdk_messages(...)` converts browser UI messages into SDK
-messages:
+`stream_text_messages(...)` handles the reusable model/tool loop:
 
-- `role: "user"` becomes `Message::user(text)`.
-- `role: "assistant"` becomes `Message::assistant(text)`.
-- `role: "system"` becomes `Message::system(text)`.
-- Non-text UI parts are ignored in this first version.
+- Emits `start`, per-step `start-step` and `finish-step`, final `finish`, and
+  `data: [DONE]`.
+- Maps text deltas to `text-start`, `text-delta`, and `text-end`.
+- Maps tool calls to `tool-input-start`, `tool-input-delta`,
+  `tool-input-available`, and `tool-output-available`.
+- Executes tools through the app-owned `ToolRegistry`.
+- Builds continuation requests with the assistant turn and tool results.
+- Stops after `MessageStreamOptions::max_model_steps` to avoid an accidental
+  infinite tool/model loop.
+- Emits protocol-shaped error chunks if SDK stream creation or consumption
+  fails.
 
-The function also injects a server-side system prompt:
+The response must include the AI SDK compatibility header:
 
-```rust
-Message::system(
-    "You are a concise demo chatbot running behind an Axum server..."
-)
+```http
+x-vercel-ai-ui-message-stream: v1
 ```
 
-Then the handler builds a provider-neutral SDK request:
+Use the exported constants instead of spelling these values in every adapter:
 
 ```rust
-let mut request = TextRequest::builder()
-    .messages(ui_messages_to_sdk_messages(input.messages))
-    .max_output_tokens(800)
-    .temperature(0.7)
-    .tools(state.tools.definitions())
-    .build();
+MESSAGE_STREAM_CONTENT_TYPE
+MESSAGE_STREAM_CACHE_CONTROL
+MESSAGE_STREAM_PROTOCOL_HEADER
+MESSAGE_STREAM_PROTOCOL_VERSION
 ```
 
 ## Model Setup
@@ -174,68 +154,6 @@ let state = AppState {
 ```
 
 `OPENAI_MODEL` is optional and defaults to `gpt-4.1-mini`.
-
-The route calls the SDK through:
-
-```rust
-let sdk_stream = stream_text(&state.model, request.clone()).await?;
-```
-
-That returns provider-neutral stream events. The Axum app does not parse
-provider-specific OpenAI tool-call chunks.
-
-## Streaming Adapter
-
-`chat_stream(...)` maps SDK stream events to AI SDK UI-message stream chunks:
-
-- `StreamEvent::TextDelta` starts a text part if needed, then emits `text-delta`.
-- `StreamEvent::ToolCallStarted` emits `tool-input-start`.
-- `StreamEvent::ToolCallDelta` emits `tool-input-delta`.
-- `StreamEvent::ToolCallReady` emits `tool-input-available`.
-- `StreamEvent::Finished` stores the finish reason for the final `finish` part.
-
-Each event is also pushed into `TurnAccumulator`, which reconstructs the
-assistant turn for continuation without duplicating provider-specific parsing in
-the example.
-
-## Tool Loop
-
-The model may finish in one of two ways:
-
-- No tool calls: send `finish-step`, `finish`, and `[DONE]`.
-- One or more tool calls: execute tools, append results, and run another model step.
-
-The loop is bounded:
-
-```rust
-for step_index in 0..5 {
-    // model -> optional tools -> continuation
-}
-```
-
-This prevents an accidental infinite model/tool loop in the demo.
-
-When tools are called, the app builds a continuation request:
-
-```rust
-let mut builder =
-    ContinuationBuilder::from_request(request).with_assistant_turn(assistant_parts);
-
-for call in &tool_calls {
-    let output = state.tools.execute(call).await?;
-    builder = builder.with_tool_result(&call.id, output.to_string());
-}
-
-request = builder.build();
-```
-
-This is the key SDK composition point. The server app, not the SDK, decides:
-
-- Which tools are available.
-- Whether a tool call is allowed.
-- How the tool is executed.
-- What result is sent back to the model.
-- What tool output is streamed to the browser.
 
 ## Adding A Tool
 
@@ -275,20 +193,6 @@ Returns deterministic demo weather for a requested city.
 
 Returns the server time as Unix seconds for a requested timezone label.
 
-## Error Handling
-
-If SDK stream creation or stream consumption fails, the server emits an AI SDK
-UI-message error part, then closes the stream:
-
-```text
-data: {"type":"error","errorText":"..."}
-data: {"type":"finish-step"}
-data: {"type":"finish","finishReason":"error"}
-data: [DONE]
-```
-
-This keeps the frontend parser in a valid state.
-
 ## Production Notes
 
 This example is deliberately not production-ready. Real application code would
@@ -301,7 +205,6 @@ usually add:
 - Audit logs for tool calls and outputs.
 - Better error redaction.
 - CORS policy if the web app is served from another origin.
-- Tests for exact SSE chunks from mocked SDK events.
 
 The important boundary should stay the same: keep provider-neutral model and
 tool orchestration in the Rust server, and expose only the AI SDK UI-message

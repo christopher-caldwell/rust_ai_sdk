@@ -125,6 +125,9 @@ cargo fmt --check
 echo "==> Running tests"
 cargo test
 
+echo "==> Running all-feature tests"
+cargo test --all-features
+
 echo "==> Listing packaged files"
 cargo package --list
 

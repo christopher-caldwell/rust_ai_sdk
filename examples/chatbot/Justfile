@@ -6,6 +6,12 @@ server:
 server-check:
 	cd server && just check
 
+server-explicit:
+	cd server-explicit && just run
+
+server-explicit-check:
+	cd server-explicit && just check
+
 web:
 	cd web && npm run dev
 

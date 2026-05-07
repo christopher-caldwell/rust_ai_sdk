@@ -1,5 +1,5 @@
 [package]
-name = "chatbot-server"
+name = "chatbot-server-explicit"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,8 +7,8 @@ edition = "2024"
 another-ai-sdk = { version = "0.0.2", path = "../../..", features = ["message-stream"] }
 axum = "0.8.9"
 dotenvy = "0.15.7"
+futures-core = "0.3.32"
 serde_json = "1.0.149"
 tokio = { version = "1.52.1", features = ["macros", "rt-multi-thread", "net"] }
-tower-http = "0.6.8"
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"

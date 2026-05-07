@@ -18,6 +18,9 @@ but to bring the same practical composition model to Rust servers.
   ready tool calls, usage, finish reason, and response metadata.
 - **Tool-aware runtime helpers**: `run_turn`, `ContinuationBuilder`,
   `TurnAccumulator`, and `ToolRegistry` for model -> tool -> model loops.
+- **Optional message stream add-on**: feature-gated helpers for serving the
+  AI SDK UI-message SSE wire protocol from any Rust HTTP framework that can
+  stream bytes.
 - **Server-friendly design**: tools execute in your application code, so you
   keep control of authorization, side effects, persistence, and auditing.
 - **Examples**: standalone provider demos and an Axum + Vite chatbot using the
@@ -39,6 +42,12 @@ For examples inside this repo, use:
 
 ```toml
 another-ai-sdk = { path = "../.." }
+```
+
+To enable the framework-independent AI SDK UI-message stream adapter:
+
+```toml
+another-ai-sdk = { path = "/path/to/rust_ai_sdk", features = ["message-stream"] }
 ```
 
 Provider examples require API keys:
@@ -210,6 +219,40 @@ async fn main() -> Result<(), SdkError> {
 }
 ```
 
+## Message Stream Add-On
+
+Enable `message-stream` when a server needs to accept AI SDK UI-message JSON
+and stream the matching SSE protocol back to a browser or other client. The
+add-on returns `bytes::Bytes`, not Axum/Rocket/Actix response types.
+
+```rust
+use another_ai_sdk::prelude::*;
+use another_ai_sdk::providers::openai::model::OpenAiChatModel;
+
+async fn handler(input: MessageStreamRequest, model: OpenAiChatModel, tools: ToolRegistry) {
+    let options = MessageStreamOptions::default();
+    let request = compose_text_request(
+        input,
+        "You are a concise assistant.",
+        options,
+        tools.definitions(),
+    );
+
+    let stream = stream_text_messages(model, request, tools, options);
+
+    // Framework code owns response wrapping. Set these protocol values on the
+    // HTTP response and stream `stream` as the body.
+    let _content_type = MESSAGE_STREAM_CONTENT_TYPE;
+    let _cache_control = MESSAGE_STREAM_CACHE_CONTROL;
+    let _protocol_header = MESSAGE_STREAM_PROTOCOL_HEADER;
+    let _protocol_version = MESSAGE_STREAM_PROTOCOL_VERSION;
+}
+```
+
+The helper intentionally stays thin: your app still owns JSON extraction,
+model construction, tool registration and authorization, routing, response
+headers, and HTTP body streaming.
+
 ## Examples
 
 Run the standalone examples:
@@ -232,3 +275,12 @@ just web
 
 The chatbot server is Axum, the frontend is Vite + React, and the browser uses
 `@ai-sdk/react` with the Vercel AI SDK UI message stream protocol.
+
+For a more explicit server version that shows request composition while still
+using the `message-stream` protocol helpers:
+
+```sh
+cd examples/chatbot
+just server-explicit
+just web
+```

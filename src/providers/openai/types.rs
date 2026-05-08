@@ -21,6 +21,8 @@ pub(super) struct ChatCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_completion_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
@@ -223,6 +225,8 @@ pub(super) fn text_request_to_openai(
         }),
     });
 
+    let uses_completion_tokens = uses_max_completion_tokens(model);
+
     ChatCompletionRequest {
         model: model.to_string(),
         messages: request
@@ -230,7 +234,16 @@ pub(super) fn text_request_to_openai(
             .iter()
             .flat_map(message_to_chat_messages)
             .collect(),
-        max_tokens: request.max_output_tokens,
+        max_tokens: if uses_completion_tokens {
+            None
+        } else {
+            request.max_output_tokens
+        },
+        max_completion_tokens: if uses_completion_tokens {
+            request.max_output_tokens
+        } else {
+            None
+        },
         temperature: request.temperature,
         stream: if stream_mode { Some(true) } else { None },
         stream_options: if stream_mode {
@@ -243,6 +256,13 @@ pub(super) fn text_request_to_openai(
         tools,
         tool_choice,
     }
+}
+
+fn uses_max_completion_tokens(model: &str) -> bool {
+    model.starts_with("gpt-5")
+        || model.starts_with("o1")
+        || model.starts_with("o3")
+        || model.starts_with("o4")
 }
 
 fn message_to_chat_messages(msg: &Message) -> Vec<ChatMessage> {
@@ -565,6 +585,40 @@ mod tests {
         let json = serde_json::to_value(&body.tools[0]).unwrap();
         assert_eq!(json["type"], "function");
         assert_eq!(json["function"]["name"], "get_weather");
+    }
+
+    #[test]
+    fn test_gpt5_uses_max_completion_tokens() {
+        let req = TextRequest {
+            messages: vec![Message::user("hello")],
+            max_output_tokens: Some(10),
+            temperature: None,
+            tools: vec![],
+            tool_choice: None,
+        };
+
+        let body = text_request_to_openai("gpt-5.4-nano", &req, false);
+        let json = serde_json::to_value(&body).unwrap();
+
+        assert_eq!(json["max_completion_tokens"], 10);
+        assert!(json.get("max_tokens").is_none());
+    }
+
+    #[test]
+    fn test_gpt4_uses_legacy_max_tokens() {
+        let req = TextRequest {
+            messages: vec![Message::user("hello")],
+            max_output_tokens: Some(10),
+            temperature: None,
+            tools: vec![],
+            tool_choice: None,
+        };
+
+        let body = text_request_to_openai("gpt-4.1-mini", &req, false);
+        let json = serde_json::to_value(&body).unwrap();
+
+        assert_eq!(json["max_tokens"], 10);
+        assert!(json.get("max_completion_tokens").is_none());
     }
 
     #[test]

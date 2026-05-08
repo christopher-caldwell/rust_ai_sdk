@@ -8,7 +8,7 @@ use another_ai_sdk::{
         request::TextRequest,
         tool::{ToolChoice, ToolDefinition},
     },
-    providers::openai::{model::OpenAiChatModel, OpenAiModel},
+    providers::openai::model::OpenAiChatModel,
     runtime::turn::ContinuationBuilder,
 };
 use serde_json::{json, Value};
@@ -16,7 +16,8 @@ use serde_json::{json, Value};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
-    let model = OpenAiChatModel::new(api_key, OpenAiModel::Gpt4_1Mini);
+    let model_id = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5.4-nano".to_string());
+    let model = OpenAiChatModel::new(api_key, model_id);
 
     let mut request = TextRequest::prompt(
         "What is the weather in Paris? Use the get_weather tool before answering.",

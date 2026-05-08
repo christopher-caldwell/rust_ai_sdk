@@ -16,7 +16,9 @@ use serde_json::{Value, json};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
-    let model = GeminiChatModel::new(api_key, GeminiModel::Gemini2_5Flash);
+    let model_id =
+        std::env::var("GEMINI_MODEL").unwrap_or_else(|_| GeminiModel::Gemini2_5FlashLite.to_string());
+    let model = GeminiChatModel::new(api_key, model_id);
 
     let mut request = TextRequest::prompt(
         "What is the weather in Paris? Use the get_weather tool before answering.",

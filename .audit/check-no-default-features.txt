@@ -1,2 +1,0 @@
-    Checking another-ai-sdk v0.0.3 (/Users/christophercaldwell/Code/projects/rust/rust_ai_sdk)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.29s

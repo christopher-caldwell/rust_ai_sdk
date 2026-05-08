@@ -11,7 +11,7 @@ use another_ai_sdk::{
         tool::{ToolChoice, ToolDefinition},
         types::{FinishReason, ResponseMetadata, Usage},
     },
-    providers::openai::{model::OpenAiChatModel, OpenAiModel},
+    providers::openai::model::OpenAiChatModel,
     runtime::{stream::stream_text, turn::ContinuationBuilder},
 };
 use futures_util::StreamExt;
@@ -21,7 +21,8 @@ use std::{collections::BTreeMap, io::Write};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
-    let model = OpenAiChatModel::new(api_key, OpenAiModel::Gpt4_1Mini);
+    let model_id = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5.4-nano".to_string());
+    let model = OpenAiChatModel::new(api_key, model_id);
 
     let mut request = TextRequest::prompt(
         "What is the weather in Paris? Use the get_weather tool before answering.",

@@ -9,7 +9,9 @@ use another_ai_sdk::{
 #[tokio::main]
 async fn main() {
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
-    let model = AnthropicChatModel::new(api_key, AnthropicModel::Haiku4_5);
+    let model_id =
+        std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| AnthropicModel::Haiku4_5.to_string());
+    let model = AnthropicChatModel::new(api_key, model_id);
 
     let request = TextRequest::prompt("Write a haiku about Rust");
 

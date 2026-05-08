@@ -20,7 +20,7 @@ Create `server/.env`:
 
 ```sh
 OPENAI_API_KEY=your-openai-api-key
-OPENAI_MODEL=gpt-4.1-mini
+OPENAI_MODEL=gpt-5.4-nano
 PORT=3001
 ```
 
@@ -153,7 +153,7 @@ let state = AppState {
 };
 ```
 
-`OPENAI_MODEL` is optional and defaults to `gpt-4.1-mini`.
+`OPENAI_MODEL` is optional and defaults to `gpt-5.4-nano`.
 
 ## Adding A Tool
 

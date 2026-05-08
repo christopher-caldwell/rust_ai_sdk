@@ -15,6 +15,11 @@ GEMINI_API_KEY=... cargo run --bin gemini-stream
 GEMINI_API_KEY=... cargo run --bin gemini-tool-use
 ```
 
+The examples default to cheap smoke-test models: `OPENAI_MODEL=gpt-5.4-nano`,
+`ANTHROPIC_MODEL=claude-haiku-4-5`, and
+`GEMINI_MODEL=gemini-2.5-flash-lite`. Override those environment variables to
+try other models.
+
 `openai-tool-use` runs the tool loop through the runtime helper and prints only
 the tool execution plus final answer. `openai-tool-stream` prints text as it
 arrives, executes the requested tool in application code, appends the tool

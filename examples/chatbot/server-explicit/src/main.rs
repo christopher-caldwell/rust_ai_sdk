@@ -182,7 +182,7 @@ fn openai_api_key() -> String {
 }
 
 fn openai_model() -> String {
-    std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4.1-mini".to_string())
+    std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5.4-nano".to_string())
 }
 
 fn port() -> u16 {

@@ -1,0 +1,22 @@
+   Compiling another-ai-sdk v0.0.3 (/Users/christophercaldwell/Code/projects/rust/rust_ai_sdk)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.97s
+     Running unittests src/lib.rs (target/debug/deps/another_ai_sdk-02e40a316542d91a)
+
+running 1 test
+test runtime::turn::tests::audit_repro_run_turn_returns_after_finished_even_if_stream_stays_open ... FAILED
+
+failures:
+
+---- runtime::turn::tests::audit_repro_run_turn_returns_after_finished_even_if_stream_stays_open stdout ----
+
+thread 'runtime::turn::tests::audit_repro_run_turn_returns_after_finished_even_if_stream_stays_open' (27339430) panicked at src/runtime/turn.rs:484:9:
+run_turn should stop after Finished
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    runtime::turn::tests::audit_repro_run_turn_returns_after_finished_even_if_stream_stays_open
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 71 filtered out; finished in 0.10s
+
+error: test failed, to rerun pass `--lib`

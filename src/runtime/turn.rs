@@ -38,7 +38,12 @@ pub async fn run_turn<M: LanguageModel + ?Sized>(
     let mut acc = TurnAccumulator::default();
 
     while let Some(event) = stream.next().await {
-        acc.push_event(event?);
+        let event = event?;
+        let is_finished = matches!(event, StreamEvent::Finished { .. });
+        acc.push_event(event);
+        if is_finished {
+            return acc.into_outcome();
+        }
     }
 
     acc.into_outcome()
@@ -350,7 +355,7 @@ impl AccumulatedTurn {
 mod tests {
     use super::*;
     use crate::core::types::ResponseMetadata;
-    use futures_util::stream;
+    use futures_util::{StreamExt, stream};
 
     fn make_stream(events: Vec<StreamEvent>) -> crate::core::stream::TextEventStream {
         Box::pin(stream::iter(events.into_iter().map(Ok)))
@@ -430,6 +435,60 @@ mod tests {
             }
             TurnOutcome::ToolsRequired { .. } => panic!("Expected Completed"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_returns_after_finished_even_if_stream_stays_open() {
+        struct NeverEndingAfterFinished;
+
+        #[async_trait::async_trait]
+        impl LanguageModel for NeverEndingAfterFinished {
+            async fn generate(
+                &self,
+                _request: TextRequest,
+            ) -> Result<crate::core::result::TextResult, SdkError> {
+                unimplemented!()
+            }
+
+            async fn generate_chat(
+                &self,
+                _request: TextRequest,
+            ) -> Result<crate::core::result::ChatResult, SdkError> {
+                unimplemented!()
+            }
+
+            async fn stream(
+                &self,
+                _request: TextRequest,
+            ) -> Result<crate::core::stream::TextEventStream, SdkError> {
+                Ok(Box::pin(
+                    stream::once(async {
+                        Ok(StreamEvent::Finished {
+                            finish_reason: FinishReason::Stop,
+                            usage: None,
+                            response: meta(),
+                        })
+                    })
+                    .chain(stream::pending()),
+                ))
+            }
+
+            fn model_id(&self) -> &str {
+                "never-ending"
+            }
+
+            fn provider_name(&self) -> &str {
+                "test"
+            }
+        }
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            run_turn(&NeverEndingAfterFinished, TextRequest::prompt("hi")),
+        )
+        .await;
+
+        assert!(result.is_ok(), "run_turn should stop after Finished");
     }
 
     #[tokio::test]

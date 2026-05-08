@@ -1,0 +1,24 @@
+ Documenting another-ai-sdk v0.0.3 (/Users/christophercaldwell/Code/projects/rust/rust_ai_sdk)
+warning: unresolved link to `AnthropicChatModel::new`
+ --> src/providers/anthropic/models.rs:4:7
+  |
+4 | /// [`AnthropicChatModel::new`] to use a model not listed here.
+  |       ^^^^^^^^^^^^^^^^^^^^^^^ no item named `AnthropicChatModel` in scope
+  |
+  = note: `#[warn(rustdoc::broken_intra_doc_links)]` on by default
+
+warning: unresolved link to `GeminiChatModel::new`
+ --> src/providers/gemini/models.rs:4:7
+  |
+4 | /// [`GeminiChatModel::new`] to use a model not listed here.
+  |       ^^^^^^^^^^^^^^^^^^^^ no item named `GeminiChatModel` in scope
+
+warning: unresolved link to `OpenAiChatModel::new`
+ --> src/providers/openai/models.rs:4:7
+  |
+4 | /// [`OpenAiChatModel::new`] to use a model not listed here.
+  |       ^^^^^^^^^^^^^^^^^^^^ no item named `OpenAiChatModel` in scope
+
+warning: `another-ai-sdk` (lib doc) generated 3 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.05s
+   Generated /Users/christophercaldwell/Code/projects/rust/rust_ai_sdk/target/doc/another_ai_sdk/index.html

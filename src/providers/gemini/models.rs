@@ -1,7 +1,7 @@
 /// Known Gemini model IDs as of the library release.
 ///
 /// This list is opt-in. Pass any `&str` or `String` directly to
-/// [`GeminiChatModel::new`] to use a model not listed here.
+/// [`GeminiChatModel::new`](super::model::GeminiChatModel::new) to use a model not listed here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeminiModel {
     // Gemini 3 preview text/function-capable models.

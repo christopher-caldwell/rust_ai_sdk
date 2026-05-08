@@ -131,10 +131,15 @@ where
                     fallback_tool_ids.push_back(format!("tool_call_{index}"));
                 }
 
+                let is_finished = matches!(event, StreamEvent::Finished { .. });
                 turn.push_event(event.clone());
 
                 for chunk in chunks_for_sdk_event(event, &text_part_id, &mut text_started) {
                     yield chunk;
+                }
+
+                if is_finished {
+                    break;
                 }
             }
 
@@ -356,7 +361,14 @@ fn finish_reason_to_ai_sdk(reason: &FinishReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::message::{Role, ToolCall};
+    use crate::core::{
+        error::SdkError,
+        message::{Role, ToolCall},
+        model::LanguageModel,
+        result::{ChatResult, TextResult},
+        types::{ResponseMetadata, Usage},
+    };
+    use futures_util::StreamExt;
     use serde_json::json;
 
     fn chunk_text(chunk: MessageStreamChunk) -> String {
@@ -525,5 +537,70 @@ mod tests {
 
         assert_eq!(tool_calls.len(), 1);
         assert_eq!(tool_calls[0].id, "tool_call_2");
+    }
+
+    #[tokio::test]
+    async fn stream_finishes_after_sdk_finished_even_if_stream_stays_open() {
+        struct NeverEndingAfterFinished;
+
+        #[async_trait::async_trait]
+        impl LanguageModel for NeverEndingAfterFinished {
+            async fn generate(&self, _request: TextRequest) -> Result<TextResult, SdkError> {
+                unimplemented!()
+            }
+
+            async fn generate_chat(&self, _request: TextRequest) -> Result<ChatResult, SdkError> {
+                unimplemented!()
+            }
+
+            async fn stream(
+                &self,
+                _request: TextRequest,
+            ) -> Result<crate::core::stream::TextEventStream, SdkError> {
+                Ok(Box::pin(
+                    futures_util::stream::once(async {
+                        Ok(StreamEvent::Finished {
+                            finish_reason: FinishReason::Stop,
+                            usage: Option::<Usage>::None,
+                            response: ResponseMetadata {
+                                id: Some("r1".to_string()),
+                                model: Some("m1".to_string()),
+                            },
+                        })
+                    })
+                    .chain(futures_util::stream::pending()),
+                ))
+            }
+
+            fn model_id(&self) -> &str {
+                "never-ending"
+            }
+
+            fn provider_name(&self) -> &str {
+                "test"
+            }
+        }
+
+        let stream = stream_text_messages(
+            NeverEndingAfterFinished,
+            TextRequest::prompt("hi"),
+            ToolRegistry::new(),
+            MessageStreamOptions {
+                max_model_steps: 1,
+                ..MessageStreamOptions::default()
+            },
+        );
+        futures_util::pin_mut!(stream);
+
+        let _start = stream.next().await.unwrap();
+        let _start_step = stream.next().await.unwrap();
+        let next = tokio::time::timeout(std::time::Duration::from_millis(100), stream.next())
+            .await
+            .expect("message stream should finish after SDK Finished");
+
+        assert!(
+            chunk_text(next.unwrap()).contains("\"type\":\"finish-step\""),
+            "expected finish-step after SDK Finished"
+        );
     }
 }

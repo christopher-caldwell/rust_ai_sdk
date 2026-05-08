@@ -411,11 +411,18 @@ pub(super) fn chat_response_to_chat_result(
         }
     }
 
-    let finish_reason = choice
-        .finish_reason
-        .as_deref()
-        .map(map_finish_reason)
-        .unwrap_or_else(|| FinishReason::Other("unknown".to_string()));
+    let has_tool_calls = parts
+        .iter()
+        .any(|part| matches!(part, MessagePart::ToolCall(_)));
+    let finish_reason = if has_tool_calls {
+        FinishReason::ToolUse
+    } else {
+        choice
+            .finish_reason
+            .as_deref()
+            .map(map_finish_reason)
+            .unwrap_or_else(|| FinishReason::Other("unknown".to_string()))
+    };
 
     let usage = resp.usage.map(|u| TokenUsage {
         input_tokens: u.prompt_tokens,
@@ -664,6 +671,34 @@ mod tests {
         assert_eq!(calls[0].id, "call_abc");
         assert_eq!(calls[0].name, "get_weather");
         assert_eq!(calls[0].input["location"], "Paris");
+        assert!(matches!(result.finish_reason, FinishReason::ToolUse));
+    }
+
+    #[test]
+    fn test_chat_response_to_chat_result_with_tool_calls_overrides_stop_finish() {
+        let resp = ChatCompletionResponse {
+            id: Some("req_1".to_string()),
+            model: Some("gpt-4".to_string()),
+            choices: vec![Choice {
+                message: AssistantMessage {
+                    content: None,
+                    tool_calls: Some(vec![OaiToolCallIn {
+                        id: "call_abc".to_string(),
+                        call_type: "function".to_string(),
+                        function: OaiFunctionCallIn {
+                            name: "get_weather".to_string(),
+                            arguments: r#"{"location":"Paris"}"#.to_string(),
+                        },
+                    }]),
+                },
+                finish_reason: Some("stop".to_string()),
+            }],
+            usage: None,
+        };
+
+        let result = chat_response_to_chat_result(resp).unwrap();
+
+        assert!(result.has_tool_calls());
         assert!(matches!(result.finish_reason, FinishReason::ToolUse));
     }
 }

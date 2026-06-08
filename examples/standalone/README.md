@@ -15,17 +15,22 @@ GEMINI_API_KEY=... cargo run --bin gemini-stream
 GEMINI_API_KEY=... cargo run --bin gemini-tool-use
 ```
 
+The examples default to cheap smoke-test models: `OPENAI_MODEL=gpt-5.4-nano`,
+`ANTHROPIC_MODEL=claude-haiku-4-5`, and
+`GEMINI_MODEL=gemini-2.5-flash-lite`. Override those environment variables to
+try other models.
+
 `openai-tool-use` runs the tool loop through the runtime helper and prints only
-the tool execution plus final answer. `openai-tool-stream` prints text as it
-arrives, executes the requested tool in application code, appends the tool
-result, and streams the final model turn. `openai-event-inspection` prints the
-structured stream events directly.
+the tool execution plus final answer. `openai-tool-stream` uses the same
+high-level streaming turn helper, prints turn metadata, executes the requested
+tool in application code, appends the tool result, and runs the final model
+turn. `openai-event-inspection` prints the structured stream events directly.
 
 The weather tool is deterministic demo code. It does not call an external
 service; the model receives a hardcoded JSON result from the example.
 
-`anthropic-tool-use` demonstrates the same structured non-streaming tool loop
-against Anthropic.
+`anthropic-tool-use` demonstrates the same high-level tool loop against
+Anthropic.
 
 `gemini-generate`, `gemini-stream`, and `gemini-tool-use` demonstrate the same
 flows against Gemini using the native Gemini API.

@@ -53,6 +53,17 @@ impl ToolRegistry {
     }
 
     pub async fn execute(&self, call: &ToolCall) -> Result<Value, SdkError> {
+        if call.has_malformed_input() {
+            let parse_error = call
+                .malformed_input_error()
+                .unwrap_or("unknown JSON parse error");
+
+            return Err(SdkError::Validation(format!(
+                "tool call '{}' for tool '{}' has malformed JSON input and will not be executed: {}",
+                call.id, call.name, parse_error,
+            )));
+        }
+
         let Some(tool) = self.tools.get(&call.name) else {
             return Err(SdkError::Unknown(format!("unknown tool: {}", call.name)));
         };
@@ -98,5 +109,20 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, SdkError::Unknown(message) if message.contains("missing")));
+    }
+
+    #[tokio::test]
+    async fn registry_rejects_malformed_tool_input_before_handler_runs() {
+        let registry = ToolRegistry::new().register(
+            ToolDefinition::new("echo", "Echo input", json!({"type": "object"})),
+            |_call| async move { Ok(json!({ "handler": "ran" })) },
+        );
+        let call = ToolCall::malformed_json_input("call_1", "echo", "{broken", "expected value");
+
+        let error = registry.execute(&call).await.unwrap_err();
+
+        assert!(
+            matches!(error, SdkError::Validation(message) if message.contains("malformed JSON input"))
+        );
     }
 }

@@ -4,9 +4,9 @@ use serde_json::Value;
 use crate::core::{
     error::SdkError,
     message::{Message, MessagePart, Role, ToolCall},
+    provider_policy::{ToolChoicePolicy, tool_choice_policy, unknown_finish_reason},
     request::TextRequest,
     result::{ChatResult, TextResult},
-    tool::ToolChoice,
     types::{FinishReason, ResponseMetadata, Usage as TokenUsage},
 };
 
@@ -109,8 +109,7 @@ pub(super) struct AnthropicErrorResponse {
 pub(super) struct AnthropicErrorDetail {
     pub message: String,
     #[serde(rename = "type")]
-    #[allow(dead_code)]
-    pub error_type: String,
+    pub error_type: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +117,7 @@ pub(super) struct AnthropicErrorDetail {
 // ---------------------------------------------------------------------------
 
 /// Minimal envelope used to read the `type` field before full deserialization.
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct EventEnvelope {
     #[serde(rename = "type")]
@@ -125,11 +125,13 @@ pub(super) struct EventEnvelope {
 }
 
 /// `message_start` — carries message metadata and initial usage.
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct MessageStartEvent {
     pub message: MessageStartBody,
 }
 
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct MessageStartBody {
     pub id: Option<String>,
@@ -138,12 +140,14 @@ pub(super) struct MessageStartBody {
 }
 
 /// `content_block_delta` — carries a text (or other) delta.
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct ContentBlockDeltaEvent {
     pub index: u32,
     pub delta: ContentDelta,
 }
 
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct ContentDelta {
     #[serde(default)]
@@ -153,12 +157,14 @@ pub(super) struct ContentDelta {
 }
 
 /// `content_block_start` - carries text or tool-use block metadata.
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct ContentBlockStartEvent {
     pub index: u32,
     pub content_block: ContentBlockStart,
 }
 
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 pub(super) enum ContentBlockStart {
@@ -169,24 +175,28 @@ pub(super) enum ContentBlockStart {
 }
 
 /// `content_block_stop` - marks the end of a text or tool-use block.
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct ContentBlockStopEvent {
     pub index: u32,
 }
 
 /// `message_delta` — carries stop_reason and output usage.
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct MessageDeltaEvent {
     pub delta: MessageDeltaBody,
     pub usage: Option<AnthropicUsage>,
 }
 
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct MessageDeltaBody {
     pub stop_reason: Option<String>,
 }
 
 /// `error` — carries an Anthropic error payload.
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct ErrorEvent {
     pub error: AnthropicErrorDetail,
@@ -230,17 +240,17 @@ pub(super) fn text_request_to_anthropic(
         })
         .collect();
 
-    let tool_choice = request
-        .tool_choice
-        .as_ref()
-        .and_then(|choice| match choice {
-            ToolChoice::Auto => Some(AnthropicToolChoice::Auto),
-            ToolChoice::Required { name } => Some(AnthropicToolChoice::Tool { name: name.clone() }),
-            ToolChoice::None => {
-                tools.clear();
-                None
-            }
-        });
+    let tool_choice = match tool_choice_policy(request.tool_choice.as_ref()) {
+        ToolChoicePolicy::Default => None,
+        ToolChoicePolicy::Auto => Some(AnthropicToolChoice::Auto),
+        ToolChoicePolicy::Required { name } => Some(AnthropicToolChoice::Tool {
+            name: name.to_string(),
+        }),
+        ToolChoicePolicy::None => {
+            tools.clear();
+            None
+        }
+    };
 
     AnthropicRequest {
         model: model.to_string(),
@@ -285,7 +295,7 @@ fn message_content(msg: &Message) -> AnthropicMessageContent {
             },
             MessagePart::ToolResult(result) => AnthropicContentPart::ToolResult {
                 tool_use_id: result.tool_call_id.clone(),
-                content: result.content.clone(),
+                content: result.output.as_provider_string(),
             },
         })
         .collect();
@@ -319,7 +329,7 @@ pub(super) fn anthropic_response_to_text_result(
         .stop_reason
         .as_deref()
         .map(map_stop_reason)
-        .unwrap_or_else(|| FinishReason::Other("unknown".to_string()));
+        .unwrap_or_else(unknown_finish_reason);
 
     let usage = resp.usage.map(|u| {
         let input = u.input_tokens.unwrap_or(0);
@@ -372,7 +382,7 @@ pub(super) fn anthropic_response_to_chat_result(
         .stop_reason
         .as_deref()
         .map(map_stop_reason)
-        .unwrap_or_else(|| FinishReason::Other("unknown".to_string()));
+        .unwrap_or_else(unknown_finish_reason);
 
     let usage = resp.usage.map(|u| {
         let input = u.input_tokens.unwrap_or(0);
@@ -398,14 +408,20 @@ pub(super) fn anthropic_response_to_chat_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::tool::{ToolChoice, ToolDefinition};
 
     #[test]
     fn test_map_stop_reason() {
-        assert!(matches!(map_stop_reason("end_turn"), FinishReason::Stop));
-        assert!(matches!(
-            map_stop_reason("max_tokens"),
-            FinishReason::Length
-        ));
+        let cases = [
+            ("end_turn", FinishReason::Stop),
+            ("stop_sequence", FinishReason::Stop),
+            ("max_tokens", FinishReason::Length),
+            ("tool_use", FinishReason::ToolUse),
+        ];
+
+        for (provider_reason, expected) in cases {
+            assert_eq!(map_stop_reason(provider_reason), expected);
+        }
 
         let other = map_stop_reason("unknown_reason");
         match other {
@@ -447,17 +463,54 @@ mod tests {
 
     #[test]
     fn test_tool_def_serialization() {
-        let req =
-            TextRequest::prompt("hello").with_tools(vec![crate::core::tool::ToolDefinition::new(
-                "get_weather",
-                "Get weather",
-                serde_json::json!({"type": "object"}),
-            )]);
+        let req = TextRequest::prompt("hello").with_tools(vec![ToolDefinition::new(
+            "get_weather",
+            "Get weather",
+            serde_json::json!({"type": "object"}),
+        )]);
 
         let body = text_request_to_anthropic("claude", &req, false);
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["tools"][0]["name"], "get_weather");
         assert_eq!(json["tools"][0]["input_schema"]["type"], "object");
+    }
+
+    #[test]
+    fn request_maps_tool_choice_policy() {
+        let auto = TextRequest::prompt("x")
+            .with_tools(vec![ToolDefinition::new(
+                "get_weather",
+                "Get weather",
+                serde_json::json!({"type": "object"}),
+            )])
+            .with_tool_choice(ToolChoice::Auto);
+        let required = TextRequest::prompt("x")
+            .with_tools(vec![ToolDefinition::new(
+                "get_weather",
+                "Get weather",
+                serde_json::json!({"type": "object"}),
+            )])
+            .with_tool_choice(ToolChoice::Required {
+                name: "get_weather".to_string(),
+            });
+        let none = TextRequest::prompt("x")
+            .with_tools(vec![ToolDefinition::new(
+                "get_weather",
+                "Get weather",
+                serde_json::json!({"type": "object"}),
+            )])
+            .with_tool_choice(ToolChoice::None);
+
+        let auto = serde_json::to_value(text_request_to_anthropic("claude", &auto, false)).unwrap();
+        let required =
+            serde_json::to_value(text_request_to_anthropic("claude", &required, false)).unwrap();
+        let none = serde_json::to_value(text_request_to_anthropic("claude", &none, false)).unwrap();
+
+        assert_eq!(auto["tool_choice"]["type"], "auto");
+        assert_eq!(required["tool_choice"]["type"], "tool");
+        assert_eq!(required["tool_choice"]["name"], "get_weather");
+        assert!(none.get("tool_choice").is_none());
+        assert!(none.get("tools").is_none());
     }
 
     #[test]

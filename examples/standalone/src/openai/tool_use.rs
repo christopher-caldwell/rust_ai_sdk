@@ -1,57 +1,73 @@
 // Requires OPENAI_API_KEY in the environment.
 //
-// Demonstrates a tool-aware turn using the structured non-streaming result.
+// Demonstrates the canonical high-level tool loop.
 
 use another_ai_sdk::{
-    core::{
-        message::ToolCall,
-        request::TextRequest,
-        tool::{ToolChoice, ToolDefinition},
-    },
-    providers::openai::{model::OpenAiChatModel, OpenAiModel},
-    runtime::turn::ContinuationBuilder,
+    prelude::*,
+    providers::openai::{OpenAiChatModel, OpenAiModel},
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
-    let model = OpenAiChatModel::new(api_key, OpenAiModel::Gpt4_1Mini);
+    let model_id =
+        std::env::var("OPENAI_MODEL").unwrap_or_else(|_| OpenAiModel::Gpt5_4Nano.to_string());
+    let model = OpenAiChatModel::new(api_key, model_id);
 
-    let mut request = TextRequest::prompt(
-        "What is the weather in Paris? Use the get_weather tool before answering.",
-    )
-    .with_tools(vec![weather_tool()])
-    .with_tool_choice(ToolChoice::Required {
-        name: "get_weather".to_string(),
-    });
-    request.max_output_tokens = Some(500);
+    let tools = weather_tools();
+    let mut request = TextRequest::builder()
+        .prompt("What is the weather in Paris? Use the get_weather tool before answering.")
+        .max_output_tokens(500)
+        .tools(tools.definitions())
+        .tool_choice(ToolChoice::required("get_weather"))
+        .build();
 
     loop {
-        let result = model.generate_chat(request.clone()).await?;
+        let base_request = request.clone();
+        let outcome = run_turn(&model, request).await?;
 
-        if !result.has_tool_calls() {
-            println!("{}", result.text());
-            break;
+        match outcome {
+            TurnOutcome::Completed(result) => {
+                println!("{}", result.text());
+                break;
+            }
+            TurnOutcome::ToolsRequired {
+                assistant_parts,
+                tool_calls,
+                ..
+            } => {
+                let mut continuation = ContinuationBuilder::from_request(base_request)
+                    .with_assistant_turn(assistant_parts);
+
+                for call in &tool_calls {
+                    let output = tools.execute(call).await?;
+                    println!("[tool:{}] {}", call.name, output);
+                    continuation = continuation.with_tool_result(&call.id, output);
+                }
+
+                request = continuation.build().with_tool_choice(ToolChoice::None);
+            }
         }
-
-        let mut builder =
-            ContinuationBuilder::from_request(request).with_assistant_turn(result.parts.clone());
-
-        for call in result.tool_calls() {
-            let output = execute_tool(call);
-            println!("[tool:{}] {}", call.name, output);
-            builder = builder.with_tool_result(&call.id, output);
-        }
-
-        request = builder.build();
-        request.tool_choice = Some(ToolChoice::None);
     }
 
     Ok(())
 }
 
-fn weather_tool() -> ToolDefinition {
+fn weather_tools() -> ToolRegistry {
+    ToolRegistry::new().register(weather_tool_definition(), |call| async move {
+        let location = call
+            .input
+            .get("location")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+
+        Ok::<Value, SdkError>(fake_weather(&location))
+    })
+}
+
+fn weather_tool_definition() -> ToolDefinition {
     ToolDefinition::new(
         "get_weather",
         "Get a deterministic weather report for a city.",
@@ -67,20 +83,6 @@ fn weather_tool() -> ToolDefinition {
             "additionalProperties": false
         }),
     )
-}
-
-fn execute_tool(call: &ToolCall) -> String {
-    if call.name != "get_weather" {
-        return json!({ "error": format!("unknown tool: {}", call.name) }).to_string();
-    }
-
-    let location = call
-        .input
-        .get("location")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-
-    fake_weather(location).to_string()
 }
 
 fn fake_weather(location: &str) -> Value {

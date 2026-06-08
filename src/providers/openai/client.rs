@@ -1,21 +1,33 @@
+#[cfg(feature = "streaming")]
 use std::collections::HashMap;
 
+use serde::de::DeserializeOwned;
+
+#[cfg(feature = "streaming")]
+use crate::core::message::ToolCall;
 use crate::core::{
     error::SdkError,
     request::TextRequest,
     result::{ChatResult, TextResult},
 };
 
+#[cfg(feature = "streaming")]
+use super::types::{ChatCompletionChunk, map_finish_reason};
 use super::{
     error::{OpenAiClientError, truncate_body},
     types::{
-        ChatCompletionChunk, ChatCompletionResponse, OpenAiErrorBody, chat_response_to_chat_result,
-        chat_response_to_text_result, map_finish_reason, text_request_to_openai,
+        ChatCompletionResponse, OpenAiErrorBody, chat_response_to_chat_result,
+        chat_response_to_text_result, text_request_to_openai,
     },
 };
-use crate::core::stream::{StreamEvent, TextEventStream};
+#[cfg(feature = "streaming")]
+use crate::core::stream::StreamEvent;
+use crate::core::stream::TextEventStream;
+#[cfg(feature = "streaming")]
 use crate::core::types::{FinishReason, ResponseMetadata, Usage as TokenUsage};
+#[cfg(feature = "streaming")]
 use eventsource_stream::Eventsource;
+#[cfg(feature = "streaming")]
 use futures_util::StreamExt;
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
@@ -51,41 +63,24 @@ impl OpenAiClient {
         model: &str,
         request: &TextRequest,
     ) -> Result<TextResult, SdkError> {
+        request.validate()?;
+
         let body = text_request_to_openai(model, request, false);
         let url = format!("{}/chat/completions", self.base_url);
 
-        let response = self
-            .http
-            .post(&url)
-            .header(
-                reqwest::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key),
-            )
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))?;
+        let response = send_json_request(
+            self.http
+                .post(&url)
+                .header(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Bearer {}", self.api_key),
+                )
+                .json(&body),
+        )
+        .await?;
 
-        let status = response.status();
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))?;
-
-        if !status.is_success() {
-            let text = String::from_utf8_lossy(&bytes);
-            let snippet = truncate_body(text.as_ref(), ERROR_BODY_SNIPPET_LEN);
-            if let Ok(err) = serde_json::from_slice::<OpenAiErrorBody>(&bytes) {
-                return Err(SdkError::Api(format!(
-                    "{} (HTTP {})",
-                    err.error.message, status
-                )));
-            }
-            return Err(SdkError::Http(format!("HTTP {}: {}", status, snippet)));
-        }
-
-        let parsed: ChatCompletionResponse = serde_json::from_slice(&bytes)
-            .map_err(|e| SdkError::from(OpenAiClientError::Serde(e)))?;
+        let bytes = decode_response_bytes(response).await?;
+        let parsed: ChatCompletionResponse = decode_json_response(&bytes)?;
         chat_response_to_text_result(parsed)
     }
 
@@ -94,63 +89,48 @@ impl OpenAiClient {
         model: &str,
         request: &TextRequest,
     ) -> Result<ChatResult, SdkError> {
+        request.validate()?;
+
         let body = text_request_to_openai(model, request, false);
         let url = format!("{}/chat/completions", self.base_url);
 
-        let response = self
-            .http
-            .post(&url)
-            .header(
-                reqwest::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key),
-            )
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))?;
+        let response = send_json_request(
+            self.http
+                .post(&url)
+                .header(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Bearer {}", self.api_key),
+                )
+                .json(&body),
+        )
+        .await?;
 
-        let status = response.status();
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))?;
-
-        if !status.is_success() {
-            let text = String::from_utf8_lossy(&bytes);
-            let snippet = truncate_body(text.as_ref(), ERROR_BODY_SNIPPET_LEN);
-            if let Ok(err) = serde_json::from_slice::<OpenAiErrorBody>(&bytes) {
-                return Err(SdkError::Api(format!(
-                    "{} (HTTP {})",
-                    err.error.message, status
-                )));
-            }
-            return Err(SdkError::Http(format!("HTTP {}: {}", status, snippet)));
-        }
-
-        let parsed: ChatCompletionResponse = serde_json::from_slice(&bytes)
-            .map_err(|e| SdkError::from(OpenAiClientError::Serde(e)))?;
+        let bytes = decode_response_bytes(response).await?;
+        let parsed: ChatCompletionResponse = decode_json_response(&bytes)?;
         chat_response_to_chat_result(parsed)
     }
 
+    #[cfg(feature = "streaming")]
     pub async fn stream(
         &self,
         model: &str,
         request: &TextRequest,
     ) -> Result<TextEventStream, SdkError> {
+        request.validate()?;
+
         let body = text_request_to_openai(model, request, true);
         let url = format!("{}/chat/completions", self.base_url);
 
-        let response = self
-            .http
-            .post(&url)
-            .header(
-                reqwest::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key),
-            )
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))?;
+        let response = send_json_request(
+            self.http
+                .post(&url)
+                .header(
+                    reqwest::header::AUTHORIZATION,
+                    format!("Bearer {}", self.api_key),
+                )
+                .json(&body),
+        )
+        .await?;
 
         let status = response.status();
         if !status.is_success() {
@@ -158,15 +138,7 @@ impl OpenAiClient {
                 .bytes()
                 .await
                 .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))?;
-            let text = String::from_utf8_lossy(&bytes);
-            let snippet = truncate_body(text.as_ref(), ERROR_BODY_SNIPPET_LEN);
-            if let Ok(err) = serde_json::from_slice::<OpenAiErrorBody>(&bytes) {
-                return Err(SdkError::Api(format!(
-                    "{} (HTTP {})",
-                    err.error.message, status
-                )));
-            }
-            return Err(SdkError::Http(format!("HTTP {}: {}", status, snippet)));
+            return Err(provider_error_from_bytes(status, &bytes));
         }
 
         // Per-stream mutable state accumulated across chunks.
@@ -204,7 +176,7 @@ impl OpenAiClient {
                         Err(e) => vec![Err(SdkError::from(OpenAiClientError::Serde(e)))],
                     }
                 }
-                Err(e) => vec![Err(SdkError::Api(format!(
+                Err(e) => vec![Err(SdkError::api(format!(
                     "EventSource stream error: {}",
                     e
                 )))],
@@ -213,17 +185,83 @@ impl OpenAiClient {
 
         Ok(Box::pin(stream))
     }
+
+    #[cfg(not(feature = "streaming"))]
+    pub async fn stream(
+        &self,
+        _model: &str,
+        _request: &TextRequest,
+    ) -> Result<TextEventStream, SdkError> {
+        Err(SdkError::Validation(
+            "OpenAI streaming requires the `streaming` feature.".to_string(),
+        ))
+    }
+}
+
+async fn send_json_request(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, SdkError> {
+    request
+        .send()
+        .await
+        .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))
+}
+
+async fn decode_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, SdkError> {
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))?;
+
+    if !status.is_success() {
+        return Err(provider_error_from_bytes(status, &bytes));
+    }
+
+    Ok(bytes.to_vec())
+}
+
+fn decode_json_response<T>(bytes: &[u8]) -> Result<T, SdkError>
+where
+    T: DeserializeOwned,
+{
+    serde_json::from_slice(bytes).map_err(|e| SdkError::from(OpenAiClientError::Serde(e)))
+}
+
+fn provider_error_from_bytes(status: reqwest::StatusCode, bytes: &[u8]) -> SdkError {
+    let text = String::from_utf8_lossy(bytes);
+    let snippet = truncate_body(text.as_ref(), ERROR_BODY_SNIPPET_LEN);
+
+    if let Ok(err) = serde_json::from_slice::<OpenAiErrorBody>(bytes) {
+        return SdkError::provider_api(
+            "OpenAI",
+            Some(status.as_u16()),
+            err.error.code,
+            err.error.error_type,
+            err.error.message,
+            Some(snippet),
+        );
+    }
+
+    SdkError::provider_http(
+        "OpenAI",
+        Some(status.as_u16()),
+        snippet.clone(),
+        Some(snippet),
+    )
 }
 
 // ---------------------------------------------------------------------------
 // Internal streaming helpers
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "streaming")]
 struct PendingFinished {
     finish_reason: FinishReason,
     response: ResponseMetadata,
 }
 
+#[cfg(feature = "streaming")]
 #[derive(Default)]
 struct ToolCallBuffer {
     id: String,
@@ -238,6 +276,7 @@ struct ToolCallBuffer {
 /// `usage` only on a trailing usage-only chunk (when `include_usage: true`
 /// is requested). We buffer the best-known values here and use them when
 /// constructing the final `Finished` event.
+#[cfg(feature = "streaming")]
 #[derive(Default)]
 struct StreamAccumulator {
     /// Last seen response id (often only in the first chunk).
@@ -275,6 +314,7 @@ struct StreamAccumulator {
 /// We want the final `Finished` event to carry the usage from chunk 4.
 /// We achieve this by *deferring* the `Finished` event after we observe
 /// finish_reason (step 3), then flushing it in step 4 after we update usage.
+#[cfg(feature = "streaming")]
 fn process_chunk(
     chunk: ChatCompletionChunk,
     acc: &mut StreamAccumulator,
@@ -342,14 +382,13 @@ fn process_chunk(
         }
 
         for (index, buf) in ready_tool_calls {
-            let input = serde_json::from_str(&buf.arguments)
-                .unwrap_or_else(|_| serde_json::Value::String(buf.arguments.clone()));
+            let call = ToolCall::from_json_input(buf.id, buf.name, &buf.arguments);
             events.push(Ok(StreamEvent::ToolCallReady {
-                id: buf.id,
-                name: buf.name,
+                id: call.id,
+                name: call.name,
                 index,
-                input,
-                provider_metadata: None,
+                input: call.input,
+                provider_metadata: call.provider_metadata,
             }));
         }
 
@@ -366,6 +405,7 @@ fn process_chunk(
     events
 }
 
+#[cfg(feature = "streaming")]
 fn process_tool_call_delta(
     delta: &super::types::OaiChunkToolCallDelta,
     acc: &mut StreamAccumulator,
@@ -413,6 +453,7 @@ fn process_tool_call_delta(
     }
 }
 
+#[cfg(feature = "streaming")]
 fn drain_tool_calls(acc: &mut StreamAccumulator) -> Vec<(u32, ToolCallBuffer)> {
     let mut indexes: Vec<u32> = acc.tool_call_buffers.keys().copied().collect();
     indexes.sort_unstable();
@@ -505,7 +546,8 @@ mod tests {
         let mock_error = json!({
             "error": {
                 "message": "Invalid API key.",
-                "type": "invalid_request_error"
+                "type": "invalid_request_error",
+                "code": "invalid_api_key"
             }
         });
 
@@ -523,8 +565,17 @@ mod tests {
         mock.assert_async().await;
 
         match result {
-            Err(SdkError::Api(msg)) => {
-                assert!(msg.contains("Invalid API key.") && msg.contains("HTTP 401"))
+            Err(SdkError::Api {
+                message,
+                status,
+                code,
+                error_type,
+                ..
+            }) => {
+                assert!(message.contains("Invalid API key."));
+                assert_eq!(status, Some(401));
+                assert_eq!(code.as_deref(), Some("invalid_api_key"));
+                assert_eq!(error_type.as_deref(), Some("invalid_request_error"));
             }
             _ => panic!("Expected Api error, got {:?}", result),
         }
@@ -548,9 +599,12 @@ mod tests {
         mock.assert_async().await;
 
         match result {
-            Err(SdkError::Http(msg)) => assert!(
-                msg.contains("Bad Gateway Timeout Exception...") && msg.contains("HTTP 502")
-            ),
+            Err(SdkError::Http {
+                message, status, ..
+            }) => {
+                assert!(message.contains("Bad Gateway Timeout Exception..."));
+                assert_eq!(status, Some(502));
+            }
             _ => panic!("Expected Http error, got {:?}", result),
         }
     }
@@ -559,6 +613,7 @@ mod tests {
     // Streaming: setup error
     // ------------------------------------------------------------------
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_setup_error() {
         let mut server = mockito::Server::new_async().await;
@@ -575,13 +630,14 @@ mod tests {
         mock.assert_async().await;
 
         // Must be a direct Err, not hidden inside a stream item.
-        assert!(matches!(result, Err(SdkError::Http(_))));
+        assert!(matches!(result, Err(SdkError::Http { .. })));
     }
 
     // ------------------------------------------------------------------
     // Streaming: happy path (includes stream_options in request body)
     // ------------------------------------------------------------------
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_success() {
         let mut server = mockito::Server::new_async().await;
@@ -656,6 +712,7 @@ mod tests {
 
     /// First chunk carries id/model; the finish chunk does not.
     /// The emitted Finished must still include id and model.
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_carries_forward_metadata() {
         let mut server = mockito::Server::new_async().await;
@@ -702,6 +759,7 @@ mod tests {
 
     /// finish_reason arrives before the usage chunk.
     /// The deferred Finished should be flushed with usage from the trailing chunk.
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_usage_from_trailing_chunk() {
         let mut server = mockito::Server::new_async().await;
@@ -754,6 +812,7 @@ mod tests {
 
     /// No finish_reason chunk ever arrives; [DONE] causes fallback Finished.
     /// The fallback must still use the id/model/usage accumulated so far.
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_done_fallback_uses_accumulated_state() {
         let mut server = mockito::Server::new_async().await;
@@ -801,6 +860,7 @@ mod tests {
     // Streaming: usage-only chunk with empty choices does not error
     // ------------------------------------------------------------------
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_usage_only_chunk_no_error() {
         let mut server = mockito::Server::new_async().await;
@@ -841,6 +901,7 @@ mod tests {
     // Streaming: malformed event produces an error item in the stream
     // ------------------------------------------------------------------
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_malformed_event() {
         let mut server = mockito::Server::new_async().await;
@@ -873,6 +934,7 @@ mod tests {
         assert!(evt2.is_err());
     }
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_single_tool_call() {
         let mut server = mockito::Server::new_async().await;
@@ -948,6 +1010,66 @@ mod tests {
         assert!(saw_finished);
     }
 
+    #[test]
+    fn test_process_chunk_preserves_malformed_tool_json() {
+        let mut acc = StreamAccumulator::default();
+        let tool_chunk: ChatCompletionChunk = serde_json::from_value(json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call_bad",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"location\":\"Paris\""
+                        }
+                    }]
+                }
+            }]
+        }))
+        .unwrap();
+        let finish_chunk: ChatCompletionChunk = serde_json::from_value(json!({
+            "choices": [{
+                "delta": {},
+                "finish_reason": "tool_calls"
+            }]
+        }))
+        .unwrap();
+
+        let start_and_delta_events = process_chunk(tool_chunk, &mut acc);
+        let ready_events = process_chunk(finish_chunk, &mut acc);
+
+        assert!(start_and_delta_events.iter().any(|event| {
+            matches!(
+                event,
+                Ok(StreamEvent::ToolCallStarted {
+                    id,
+                    name,
+                    index
+                }) if id == "call_bad" && name == "get_weather" && *index == 0
+            )
+        }));
+        let ready_event = ready_events
+            .into_iter()
+            .find_map(|event| match event.unwrap() {
+                StreamEvent::ToolCallReady {
+                    input,
+                    provider_metadata,
+                    ..
+                } => Some((input, provider_metadata)),
+                _ => None,
+            })
+            .expect("malformed tool call should still emit ToolCallReady");
+
+        assert_eq!(ready_event.0, serde_json::Value::Null);
+        let metadata = ready_event.1.expect("malformed input metadata");
+        assert_eq!(
+            metadata.as_raw()["another_ai_sdk"]["tool_input"]["state"],
+            "malformed_json"
+        );
+    }
+
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_parallel_tool_calls() {
         let mut server = mockito::Server::new_async().await;
@@ -1003,6 +1125,7 @@ mod tests {
         assert_eq!(ready[1].2["units"], "c");
     }
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_tool_call_with_text_prefix() {
         let mut server = mockito::Server::new_async().await;
@@ -1044,6 +1167,7 @@ mod tests {
         assert_eq!(input["location"], "Austin");
     }
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_tool_call_ready_when_provider_finish_is_stop() {
         let mut server = mockito::Server::new_async().await;

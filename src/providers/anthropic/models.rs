@@ -1,7 +1,7 @@
 /// Known Anthropic model IDs as of the library release.
 ///
 /// This list is opt-in. Pass any `&str` or `String` directly to
-/// [`AnthropicChatModel::new`] to use a model not listed here.
+/// [`AnthropicChatModel::new`](super::model::AnthropicChatModel::new) to use a model not listed here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnthropicModel {
     // ── Opus ──────────────────────────────────────

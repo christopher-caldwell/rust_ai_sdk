@@ -8,7 +8,7 @@ use another_ai_sdk::{
         stream::StreamEvent,
         tool::{ToolChoice, ToolDefinition},
     },
-    providers::openai::{model::OpenAiChatModel, OpenAiModel},
+    providers::openai::{OpenAiChatModel, OpenAiModel},
     runtime::stream::stream_text,
 };
 use futures_util::StreamExt;
@@ -17,16 +17,16 @@ use serde_json::json;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
-    let model = OpenAiChatModel::new(api_key, OpenAiModel::Gpt4_1Mini);
+    let model_id =
+        std::env::var("OPENAI_MODEL").unwrap_or_else(|_| OpenAiModel::Gpt5_4Nano.to_string());
+    let model = OpenAiChatModel::new(api_key, model_id);
 
-    let mut request = TextRequest::prompt(
-        "Call get_weather for Paris. Do not answer from memory.",
-    )
-    .with_tools(vec![weather_tool()])
-    .with_tool_choice(ToolChoice::Required {
-        name: "get_weather".to_string(),
-    });
-    request.max_output_tokens = Some(300);
+    let request = TextRequest::builder()
+        .prompt("Call get_weather for Paris. Do not answer from memory.")
+        .tools(vec![weather_tool()])
+        .tool_choice(ToolChoice::required("get_weather"))
+        .max_output_tokens(300)
+        .build();
 
     let mut stream = stream_text(&model, request).await?;
     while let Some(event) = stream.next().await {
@@ -40,9 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 index,
                 input_delta,
             } => {
-                println!(
-                    "ToolCallDelta(index={index}, id={id:?}, input_delta={input_delta:?})"
-                );
+                println!("ToolCallDelta(index={index}, id={id:?}, input_delta={input_delta:?})");
             }
             StreamEvent::ToolCallReady {
                 id,
@@ -51,9 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 input,
                 ..
             } => {
-                println!(
-                    "ToolCallReady(index={index}, id={id:?}, name={name:?}, input={input})"
-                );
+                println!("ToolCallReady(index={index}, id={id:?}, name={name:?}, input={input})");
             }
             StreamEvent::Finished {
                 finish_reason,

@@ -4,17 +4,25 @@ use crate::core::{
     result::{ChatResult, TextResult},
 };
 
+use serde::de::DeserializeOwned;
+
+#[cfg(feature = "streaming")]
+use super::types::{gemini_tool_metadata, map_finish_reason};
 use super::{
     error::{GeminiClientError, truncate_body},
     types::{
         GeminiErrorResponse, GenerateContentResponse, gemini_response_to_chat_result,
-        gemini_response_to_text_result, gemini_tool_metadata, map_finish_reason,
-        text_request_to_gemini,
+        gemini_response_to_text_result, text_request_to_gemini,
     },
 };
-use crate::core::stream::{StreamEvent, TextEventStream};
+#[cfg(feature = "streaming")]
+use crate::core::stream::StreamEvent;
+use crate::core::stream::TextEventStream;
+#[cfg(feature = "streaming")]
 use crate::core::types::{FinishReason, ResponseMetadata, Usage as TokenUsage};
+#[cfg(feature = "streaming")]
 use eventsource_stream::Eventsource;
+#[cfg(feature = "streaming")]
 use futures_util::StreamExt;
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -50,21 +58,21 @@ impl GeminiClient {
         model: &str,
         request: &TextRequest,
     ) -> Result<TextResult, SdkError> {
+        request.validate()?;
+
         let body = text_request_to_gemini(request)?;
         let url = self.generate_url(model);
 
-        let response = self
-            .http
-            .post(&url)
-            .header("x-goog-api-key", &self.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| SdkError::from(GeminiClientError::Reqwest(e)))?;
+        let response = send_json_request(
+            self.http
+                .post(&url)
+                .header("x-goog-api-key", &self.api_key)
+                .json(&body),
+        )
+        .await?;
 
-        let bytes = self.response_bytes(response).await?;
-        let parsed: GenerateContentResponse = serde_json::from_slice(&bytes)
-            .map_err(|e| SdkError::from(GeminiClientError::Serde(e)))?;
+        let bytes = decode_response_bytes(response).await?;
+        let parsed: GenerateContentResponse = decode_json_response(&bytes)?;
         gemini_response_to_text_result(parsed)
     }
 
@@ -73,40 +81,42 @@ impl GeminiClient {
         model: &str,
         request: &TextRequest,
     ) -> Result<ChatResult, SdkError> {
+        request.validate()?;
+
         let body = text_request_to_gemini(request)?;
         let url = self.generate_url(model);
 
-        let response = self
-            .http
-            .post(&url)
-            .header("x-goog-api-key", &self.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| SdkError::from(GeminiClientError::Reqwest(e)))?;
+        let response = send_json_request(
+            self.http
+                .post(&url)
+                .header("x-goog-api-key", &self.api_key)
+                .json(&body),
+        )
+        .await?;
 
-        let bytes = self.response_bytes(response).await?;
-        let parsed: GenerateContentResponse = serde_json::from_slice(&bytes)
-            .map_err(|e| SdkError::from(GeminiClientError::Serde(e)))?;
+        let bytes = decode_response_bytes(response).await?;
+        let parsed: GenerateContentResponse = decode_json_response(&bytes)?;
         gemini_response_to_chat_result(parsed)
     }
 
+    #[cfg(feature = "streaming")]
     pub async fn stream(
         &self,
         model: &str,
         request: &TextRequest,
     ) -> Result<TextEventStream, SdkError> {
+        request.validate()?;
+
         let body = text_request_to_gemini(request)?;
         let url = self.stream_url(model);
 
-        let response = self
-            .http
-            .post(&url)
-            .header("x-goog-api-key", &self.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| SdkError::from(GeminiClientError::Reqwest(e)))?;
+        let response = send_json_request(
+            self.http
+                .post(&url)
+                .header("x-goog-api-key", &self.api_key)
+                .json(&body),
+        )
+        .await?;
 
         let status = response.status();
         if !status.is_success() {
@@ -114,7 +124,7 @@ impl GeminiClient {
                 .bytes()
                 .await
                 .map_err(|e| SdkError::from(GeminiClientError::Reqwest(e)))?;
-            return Err(gemini_error_from_bytes(status, &bytes));
+            return Err(provider_error_from_bytes(status, &bytes));
         }
 
         let events = Box::pin(response.bytes_stream().eventsource());
@@ -139,7 +149,7 @@ impl GeminiClient {
                         Some((items, (events, acc, false)))
                     }
                     Some(Err(e)) => {
-                        let items = vec![Err(SdkError::Api(format!(
+                        let items = vec![Err(SdkError::api(format!(
                             "EventSource stream error: {}",
                             e
                         )))];
@@ -157,24 +167,22 @@ impl GeminiClient {
         Ok(Box::pin(stream))
     }
 
-    async fn response_bytes(&self, response: reqwest::Response) -> Result<Vec<u8>, SdkError> {
-        let status = response.status();
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| SdkError::from(GeminiClientError::Reqwest(e)))?;
-
-        if !status.is_success() {
-            return Err(gemini_error_from_bytes(status, &bytes));
-        }
-
-        Ok(bytes.to_vec())
+    #[cfg(not(feature = "streaming"))]
+    pub async fn stream(
+        &self,
+        _model: &str,
+        _request: &TextRequest,
+    ) -> Result<TextEventStream, SdkError> {
+        Err(SdkError::Validation(
+            "Gemini streaming requires the `streaming` feature.".to_string(),
+        ))
     }
 
     fn generate_url(&self, model: &str) -> String {
         format!("{}/models/{}:generateContent", self.base_url, model)
     }
 
+    #[cfg(feature = "streaming")]
     fn stream_url(&self, model: &str) -> String {
         format!(
             "{}/models/{}:streamGenerateContent?alt=sse",
@@ -183,15 +191,60 @@ impl GeminiClient {
     }
 }
 
-fn gemini_error_from_bytes(status: reqwest::StatusCode, bytes: &[u8]) -> SdkError {
-    let text = String::from_utf8_lossy(bytes);
-    let snippet = truncate_body(text.as_ref(), ERROR_BODY_SNIPPET_LEN);
-    if let Ok(err) = serde_json::from_slice::<GeminiErrorResponse>(bytes) {
-        return SdkError::Api(format!("{} (HTTP {})", err.error.message, status));
-    }
-    SdkError::Http(format!("HTTP {}: {}", status, snippet))
+async fn send_json_request(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, SdkError> {
+    request
+        .send()
+        .await
+        .map_err(|e| SdkError::from(GeminiClientError::Reqwest(e)))
 }
 
+async fn decode_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, SdkError> {
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| SdkError::from(GeminiClientError::Reqwest(e)))?;
+
+    if !status.is_success() {
+        return Err(provider_error_from_bytes(status, &bytes));
+    }
+
+    Ok(bytes.to_vec())
+}
+
+fn decode_json_response<T>(bytes: &[u8]) -> Result<T, SdkError>
+where
+    T: DeserializeOwned,
+{
+    serde_json::from_slice(bytes).map_err(|e| SdkError::from(GeminiClientError::Serde(e)))
+}
+
+fn provider_error_from_bytes(status: reqwest::StatusCode, bytes: &[u8]) -> SdkError {
+    let text = String::from_utf8_lossy(bytes);
+    let snippet = truncate_body(text.as_ref(), ERROR_BODY_SNIPPET_LEN);
+
+    if let Ok(err) = serde_json::from_slice::<GeminiErrorResponse>(bytes) {
+        return SdkError::provider_api(
+            "Gemini",
+            Some(status.as_u16()),
+            err.error.code.map(|code| code.to_string()),
+            err.error.status,
+            err.error.message,
+            Some(snippet),
+        );
+    }
+
+    SdkError::provider_http(
+        "Gemini",
+        Some(status.as_u16()),
+        snippet.clone(),
+        Some(snippet),
+    )
+}
+
+#[cfg(feature = "streaming")]
 #[derive(Default)]
 struct StreamAccumulator {
     id: Option<String>,
@@ -202,6 +255,7 @@ struct StreamAccumulator {
     next_tool_index: u32,
 }
 
+#[cfg(feature = "streaming")]
 impl StreamAccumulator {
     fn finish_if_needed(&mut self) -> Vec<Result<StreamEvent, SdkError>> {
         if self.finished_emitted {
@@ -222,6 +276,7 @@ impl StreamAccumulator {
     }
 }
 
+#[cfg(feature = "streaming")]
 fn process_stream_response(
     resp: GenerateContentResponse,
     acc: &mut StreamAccumulator,
@@ -300,7 +355,10 @@ fn process_stream_response(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::{request::TextRequest, stream::StreamEvent};
+    use crate::core::request::TextRequest;
+    #[cfg(feature = "streaming")]
+    use crate::core::stream::StreamEvent;
+    #[cfg(feature = "streaming")]
     use futures_util::StreamExt;
     use mockito::Server;
 
@@ -339,7 +397,9 @@ mod tests {
             .mock("POST", "/models/gemini-2.5-flash:generateContent")
             .with_status(400)
             .with_header("content-type", "application/json")
-            .with_body(r#"{"error":{"message":"bad request"}}"#)
+            .with_body(
+                r#"{"error":{"code":400,"message":"bad request","status":"INVALID_ARGUMENT"}}"#,
+            )
             .create_async()
             .await;
 
@@ -350,9 +410,21 @@ mod tests {
             .unwrap_err();
 
         mock.assert_async().await;
-        assert!(matches!(err, SdkError::Api(message) if message.contains("bad request")));
+        assert!(matches!(
+            err,
+            SdkError::Api {
+                message,
+                status: Some(400),
+                code: Some(code),
+                error_type: Some(error_type),
+                ..
+            } if message.contains("bad request")
+                && code == "400"
+                && error_type == "INVALID_ARGUMENT"
+        ));
     }
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn stream_emits_text_and_finished() {
         let mut server = Server::new_async().await;
@@ -402,6 +474,7 @@ mod tests {
         assert_eq!(response.id.as_deref(), Some("resp_1"));
     }
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn stream_emits_tool_call_sequence() {
         let mut server = Server::new_async().await;
@@ -452,10 +525,8 @@ mod tests {
                 } => {
                     saw_ready = true;
                     assert_eq!(input["location"], "Paris");
-                    assert_eq!(
-                        provider_metadata.unwrap()["gemini"]["thoughtSignature"],
-                        "sig_123"
-                    );
+                    let metadata = provider_metadata.unwrap();
+                    assert_eq!(metadata.as_raw()["gemini"]["thoughtSignature"], "sig_123");
                 }
                 StreamEvent::Finished {
                     finish_reason: r, ..
@@ -471,6 +542,7 @@ mod tests {
         assert!(matches!(finish_reason.unwrap(), FinishReason::ToolUse));
     }
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn stream_reports_malformed_json() {
         let mut server = Server::new_async().await;
@@ -493,6 +565,6 @@ mod tests {
 
         let err = stream.next().await.unwrap().unwrap_err();
         mock.assert_async().await;
-        assert!(matches!(err, SdkError::Serialization(_)));
+        assert!(matches!(err, SdkError::Serialization { .. }));
     }
 }

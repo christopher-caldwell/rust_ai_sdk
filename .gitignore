@@ -2,4 +2,5 @@
 .DS_Store
 .env
 
-.understand-anything/
+.understand-anything/tmp
+.understand-anything/intermediate

@@ -1,0 +1,1 @@
+Before searching the repo manually, check the Understand Anything knowledge graph first. Use it to orient on files, modules, layers, and relationships, then fall back to `rg` or direct file reads when the graph does not answer the question.

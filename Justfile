@@ -52,9 +52,14 @@ check-public: test check-examples doc
 # Format and lint the codebase
 lint: fmt clippy
 
-# Publish the package
-publish-dry:
+# Prepare a local release by generating version and changelog updates
+release-prepare:
     sh scripts/publish-crate.sh
 
+# Run publish validation without generating release changes
+publish-dry:
+    sh scripts/publish-crate.sh --check-only
+
+# Publish the package from the committed release changes
 publish:
     sh scripts/publish-crate.sh --publish

@@ -4,29 +4,40 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/publish-crate.sh            # run preflight + cargo publish --dry-run
-  scripts/publish-crate.sh --publish  # run preflight + publish to crates.io
+  scripts/publish-crate.sh              # generate release changes + dry-run publish
+  scripts/publish-crate.sh --check-only # run preflight + cargo publish --dry-run
+  scripts/publish-crate.sh --publish    # run preflight + publish to crates.io
 
 Options:
-  --publish     Actually upload to crates.io. Default is dry-run only.
-  --allow-dirty Allow publishing checks from a dirty git worktree.
-  -h, --help    Show this help.
+  --publish      Actually upload to crates.io. Default prepares a dry run only.
+  --check-only   Skip release-plz update and only run validation/dry-run publish.
+  --allow-dirty  Allow publishing checks from a dirty git worktree.
+  -h, --help     Show this help.
 
 Before first publish:
   1. Create a crates.io account and verify your email.
   2. Create an API token at https://crates.io/me.
   3. Run: cargo login
   4. Choose a license and add either `license = "..."` or `license-file = "..."`.
+
+Local release flow:
+  1. Run: scripts/publish-crate.sh
+  2. Review the generated Cargo.toml, Cargo.lock, and CHANGELOG.md changes.
+  3. Commit those release changes.
+  4. Run: scripts/publish-crate.sh --publish
 USAGE
 }
 
-publish=false
+mode="prepare"
 allow_dirty=false
 
 for arg in "$@"; do
   case "$arg" in
     --publish)
-      publish=true
+      mode="publish"
+      ;;
+    --check-only)
+      mode="check-only"
       ;;
     --allow-dirty)
       allow_dirty=true
@@ -56,6 +67,20 @@ require_command() {
   fi
 }
 
+ensure_clean_worktree() {
+  if [[ "$allow_dirty" == false ]] && [[ -n "$(git status --porcelain)" ]]; then
+    cat >&2 <<'MSG'
+Git worktree is dirty.
+
+Commit or stash changes before preparing or publishing a release so the
+generated changelog, version, and published crate map to a specific commit.
+If you intentionally want to test with local changes, rerun:
+  scripts/publish-crate.sh --allow-dirty
+MSG
+    exit 1
+  fi
+}
+
 require_manifest_field() {
   local field="$1"
   if ! grep -Eq "^[[:space:]]*$field[[:space:]]*=" "$manifest"; then
@@ -71,6 +96,10 @@ package_value() {
 
 require_command cargo
 require_command git
+
+if [[ "$mode" == "prepare" ]]; then
+  require_command release-plz
+fi
 
 if [[ ! -s README.md ]]; then
   echo "README.md is missing or empty." >&2
@@ -95,16 +124,7 @@ MSG
   exit 1
 fi
 
-if [[ "$allow_dirty" == false ]] && [[ -n "$(git status --porcelain)" ]]; then
-  cat >&2 <<'MSG'
-Git worktree is dirty.
-
-Commit or stash changes before publishing so the published crate maps to a
-specific commit. If you intentionally want to test with local changes, rerun:
-  scripts/publish-crate.sh --allow-dirty
-MSG
-  exit 1
-fi
+ensure_clean_worktree
 
 name="$(package_value name)"
 version="$(package_value version)"
@@ -116,6 +136,16 @@ if [[ -z "$name" || -z "$version" ]]; then
 fi
 
 echo "==> Package: $name $version"
+
+if [[ "$mode" == "prepare" ]]; then
+  echo "==> Updating version and changelog with release-plz"
+  release-plz update
+
+  version="$(package_value version)"
+  tag="v$version"
+  echo "==> Prepared package version: $version"
+fi
+
 echo "==> Verifying cargo metadata"
 cargo metadata --no-deps --format-version=1 >/dev/null
 
@@ -146,7 +176,27 @@ cargo package --list
 echo "==> Running cargo publish --dry-run"
 cargo publish --dry-run
 
-if [[ "$publish" == false ]]; then
+if [[ "$mode" != "publish" ]]; then
+  if [[ "$mode" == "prepare" ]]; then
+    cat <<MSG
+
+Release preparation passed. Nothing was uploaded.
+
+Review the generated release changes, then commit them:
+  git diff -- Cargo.toml Cargo.lock CHANGELOG.md
+  git add Cargo.toml Cargo.lock CHANGELOG.md
+  git commit -m "chore: prepare $name $version release"
+
+When you are ready to publish the committed release:
+  scripts/publish-crate.sh --publish
+
+After publishing, tag the released commit:
+  git tag $tag
+  git push origin $tag
+MSG
+    exit 0
+  fi
+
   cat <<MSG
 
 Dry run passed. Nothing was uploaded.

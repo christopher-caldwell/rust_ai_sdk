@@ -9,7 +9,11 @@ readme = "README.md"
 keywords = ["ai", "llm", "chat", "streaming", "tools"]
 categories = ["api-bindings", "asynchronous"]
 exclude = [
+    ".understand-anything/**",
+    ".github/**",
     "examples/**",
+    "issues*.md",
+    "release-plz.toml",
     "target/**",
 ]
 

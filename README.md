@@ -333,3 +333,20 @@ just check-examples
 just check-chatbot-web
 just doc
 ```
+
+## Release
+
+Release preparation is local and uses release-plz to generate the version and
+changelog updates before publishing.
+
+```sh
+cargo install release-plz
+just release-prepare
+```
+
+Review and commit the generated release files, then publish from the committed
+release:
+
+```sh
+just publish
+```

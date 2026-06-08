@@ -128,6 +128,18 @@ cargo test
 echo "==> Running all-feature tests"
 cargo test --all-features
 
+echo "==> Checking standalone examples"
+cargo check --manifest-path examples/standalone/Cargo.toml
+
+echo "==> Checking chatbot server example"
+cargo check --manifest-path examples/chatbot/server/Cargo.toml
+
+echo "==> Checking explicit chatbot server example"
+cargo check --manifest-path examples/chatbot/server-explicit/Cargo.toml
+
+echo "==> Building public rustdoc"
+cargo doc --all-features --no-deps
+
 echo "==> Listing packaged files"
 cargo package --list
 

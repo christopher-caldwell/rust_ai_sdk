@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use another_ai_sdk::{
     core::{error::SdkError, tool::ToolDefinition},
-    providers::openai::model::OpenAiChatModel,
+    providers::openai::{OpenAiChatModel, OpenAiModel},
     runtime::{
         message_stream::{
             MESSAGE_STREAM_CACHE_CONTROL, MESSAGE_STREAM_CONTENT_TYPE,
@@ -39,7 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let openai_api_key =
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set in server/.env");
-    let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5.4-nano".to_string());
+    let model =
+        std::env::var("OPENAI_MODEL").unwrap_or_else(|_| OpenAiModel::Gpt5_4Nano.to_string());
     let port = std::env::var("PORT")
         .ok()
         .and_then(|value| value.parse::<u16>().ok())
@@ -66,16 +67,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn chat_handler(
     State(state): State<AppState>,
     Json(input): Json<MessageStreamRequest>,
-) -> impl IntoResponse {
+) -> Response {
     let options = MessageStreamOptions::default();
-    let request = compose_text_request(input, SYSTEM_PROMPT, options, state.tools.definitions());
+    let request =
+        match compose_text_request(input, SYSTEM_PROMPT, options, state.tools.definitions()) {
+            Ok(request) => request,
+            Err(error) => return (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+        };
     let stream = stream_text_messages(state.model, request, state.tools, options);
 
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, MESSAGE_STREAM_CONTENT_TYPE)
         .header(header::CACHE_CONTROL, MESSAGE_STREAM_CACHE_CONTROL)
-        .header(MESSAGE_STREAM_PROTOCOL_HEADER, MESSAGE_STREAM_PROTOCOL_VERSION)
+        .header(
+            MESSAGE_STREAM_PROTOCOL_HEADER,
+            MESSAGE_STREAM_PROTOCOL_VERSION,
+        )
         .body(Body::from_stream(stream))
         .unwrap()
 }

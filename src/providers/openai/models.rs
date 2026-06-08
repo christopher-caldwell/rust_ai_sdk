@@ -1,7 +1,7 @@
 /// Known OpenAI model IDs as of the library release.
 ///
 /// This list is opt-in. Pass any `&str` or `String` directly to
-/// [`OpenAiChatModel::new`](super::model::OpenAiChatModel::new) to use a model not listed here.
+/// [`OpenAiChatModel::new`](super::OpenAiChatModel::new) to use a model not listed here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenAiModel {
     // ── GPT-5.4 ─────────────────────────────────────────

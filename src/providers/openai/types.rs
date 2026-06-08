@@ -4,9 +4,12 @@ use serde_json::Value;
 use crate::core::{
     error::SdkError,
     message::{Message, MessagePart, Role, ToolCall},
+    provider_policy::{
+        ToolChoicePolicy, finish_reason_with_tool_override, tool_choice_policy,
+        unknown_finish_reason,
+    },
     request::TextRequest,
     result::{ChatResult, TextResult},
-    tool::ToolChoice,
     types::{FinishReason, ResponseMetadata, Usage as TokenUsage},
 };
 
@@ -152,12 +155,17 @@ pub(super) struct OpenAiErrorBody {
 #[derive(Debug, Deserialize)]
 pub(super) struct OpenAiErrorDetail {
     pub message: String,
+    #[serde(default)]
+    pub code: Option<String>,
+    #[serde(rename = "type", default)]
+    pub error_type: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
 // Streaming chunk types
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct ChatCompletionChunk {
     pub id: Option<String>,
@@ -167,6 +175,7 @@ pub(super) struct ChatCompletionChunk {
     pub usage: Option<UsageBody>,
 }
 
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize)]
 pub(super) struct ChunkChoice {
     pub delta: ChunkDelta,
@@ -174,6 +183,7 @@ pub(super) struct ChunkChoice {
     pub finish_reason: Option<String>,
 }
 
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize, Default)]
 pub(super) struct ChunkDelta {
     pub content: Option<String>,
@@ -181,6 +191,7 @@ pub(super) struct ChunkDelta {
     pub tool_calls: Option<Vec<OaiChunkToolCallDelta>>,
 }
 
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize, Default)]
 pub(super) struct OaiChunkToolCallDelta {
     pub index: u32,
@@ -188,6 +199,7 @@ pub(super) struct OaiChunkToolCallDelta {
     pub function: Option<OaiFunctionDelta>,
 }
 
+#[cfg(feature = "streaming")]
 #[derive(Debug, Deserialize, Default)]
 pub(super) struct OaiFunctionDelta {
     pub name: Option<String>,
@@ -216,14 +228,19 @@ pub(super) fn text_request_to_openai(
         })
         .collect();
 
-    let tool_choice = request.tool_choice.as_ref().map(|tc| match tc {
-        ToolChoice::Auto => OaiToolChoice::String("auto"),
-        ToolChoice::None => OaiToolChoice::String("none"),
-        ToolChoice::Required { name } => OaiToolChoice::Function(OaiToolChoiceFunction {
-            choice_type: "function",
-            function: OaiToolChoiceName { name: name.clone() },
-        }),
-    });
+    let tool_choice = match tool_choice_policy(request.tool_choice.as_ref()) {
+        ToolChoicePolicy::Default => None,
+        ToolChoicePolicy::Auto => Some(OaiToolChoice::String("auto")),
+        ToolChoicePolicy::None => Some(OaiToolChoice::String("none")),
+        ToolChoicePolicy::Required { name } => {
+            Some(OaiToolChoice::Function(OaiToolChoiceFunction {
+                choice_type: "function",
+                function: OaiToolChoiceName {
+                    name: name.to_string(),
+                },
+            }))
+        }
+    };
 
     let uses_completion_tokens = uses_max_completion_tokens(model);
 
@@ -268,7 +285,7 @@ fn uses_max_completion_tokens(model: &str) -> bool {
 fn message_to_chat_messages(msg: &Message) -> Vec<ChatMessage> {
     let parts = msg.effective_parts();
 
-    // Check if this is a tool-result message (all ToolResult parts, role=User).
+    // Check if this is a tool-result message.
     let tool_results: Vec<_> = parts
         .iter()
         .filter_map(|p| {
@@ -285,7 +302,7 @@ fn message_to_chat_messages(msg: &Message) -> Vec<ChatMessage> {
             .into_iter()
             .map(|tr| ChatMessage {
                 role: "tool".to_string(),
-                content: Some(tr.content.clone()),
+                content: Some(tr.output.as_provider_string()),
                 tool_call_id: Some(tr.tool_call_id.clone()),
                 tool_calls: None,
             })
@@ -373,9 +390,7 @@ pub(super) fn chat_response_to_text_result(
     resp: ChatCompletionResponse,
 ) -> Result<TextResult, SdkError> {
     let Some(choice) = resp.choices.first() else {
-        return Err(SdkError::Api(
-            "OpenAI response contained no choices".to_string(),
-        ));
+        return Err(SdkError::api("OpenAI response contained no choices"));
     };
 
     let text = choice.message.content.clone().unwrap_or_default();
@@ -383,7 +398,7 @@ pub(super) fn chat_response_to_text_result(
         .finish_reason
         .as_deref()
         .map(map_finish_reason)
-        .unwrap_or_else(|| FinishReason::Other("unknown".to_string()));
+        .unwrap_or_else(unknown_finish_reason);
 
     let usage = resp.usage.map(|u| TokenUsage {
         input_tokens: u.prompt_tokens,
@@ -406,9 +421,7 @@ pub(super) fn chat_response_to_chat_result(
     resp: ChatCompletionResponse,
 ) -> Result<ChatResult, SdkError> {
     let Some(choice) = resp.choices.first() else {
-        return Err(SdkError::Api(
-            "OpenAI response contained no choices".to_string(),
-        ));
+        return Err(SdkError::api("OpenAI response contained no choices"));
     };
 
     let mut parts: Vec<MessagePart> = Vec::new();
@@ -421,12 +434,10 @@ pub(super) fn chat_response_to_chat_result(
 
     if let Some(tool_calls) = &choice.message.tool_calls {
         for tc in tool_calls {
-            let input: Value = serde_json::from_str(&tc.function.arguments)
-                .unwrap_or(Value::String(tc.function.arguments.clone()));
-            parts.push(MessagePart::ToolCall(ToolCall::new(
+            parts.push(MessagePart::ToolCall(ToolCall::from_json_input(
                 tc.id.clone(),
                 tc.function.name.clone(),
-                input,
+                &tc.function.arguments,
             )));
         }
     }
@@ -434,15 +445,8 @@ pub(super) fn chat_response_to_chat_result(
     let has_tool_calls = parts
         .iter()
         .any(|part| matches!(part, MessagePart::ToolCall(_)));
-    let finish_reason = if has_tool_calls {
-        FinishReason::ToolUse
-    } else {
-        choice
-            .finish_reason
-            .as_deref()
-            .map(map_finish_reason)
-            .unwrap_or_else(|| FinishReason::Other("unknown".to_string()))
-    };
+    let provider_finish_reason = choice.finish_reason.as_deref().map(map_finish_reason);
+    let finish_reason = finish_reason_with_tool_override(provider_finish_reason, has_tool_calls);
 
     let usage = resp.usage.map(|u| TokenUsage {
         input_tokens: u.prompt_tokens,
@@ -473,16 +477,16 @@ mod tests {
 
     #[test]
     fn test_map_finish_reason() {
-        assert!(matches!(map_finish_reason("stop"), FinishReason::Stop));
-        assert!(matches!(map_finish_reason("length"), FinishReason::Length));
-        assert!(matches!(
-            map_finish_reason("content_filter"),
-            FinishReason::ContentFilter
-        ));
-        assert!(matches!(
-            map_finish_reason("tool_calls"),
-            FinishReason::ToolUse
-        ));
+        let cases = [
+            ("stop", FinishReason::Stop),
+            ("length", FinishReason::Length),
+            ("content_filter", FinishReason::ContentFilter),
+            ("tool_calls", FinishReason::ToolUse),
+        ];
+
+        for (provider_reason, expected) in cases {
+            assert_eq!(map_finish_reason(provider_reason), expected);
+        }
 
         let other = map_finish_reason("max_tokens");
         match other {
@@ -554,7 +558,7 @@ mod tests {
 
         let err = chat_response_to_text_result(resp).unwrap_err();
         match err {
-            SdkError::Api(msg) => assert!(msg.contains("no choices")),
+            SdkError::Api { message, .. } => assert!(message.contains("no choices")),
             _ => panic!("Expected API error"),
         }
     }
@@ -726,6 +730,40 @@ mod tests {
         assert_eq!(calls[0].name, "get_weather");
         assert_eq!(calls[0].input["location"], "Paris");
         assert!(matches!(result.finish_reason, FinishReason::ToolUse));
+    }
+
+    #[test]
+    fn test_chat_response_to_chat_result_preserves_malformed_tool_json() {
+        let resp = ChatCompletionResponse {
+            id: Some("req_1".to_string()),
+            model: Some("gpt-4".to_string()),
+            choices: vec![Choice {
+                message: AssistantMessage {
+                    content: None,
+                    tool_calls: Some(vec![OaiToolCallIn {
+                        id: "call_bad".to_string(),
+                        call_type: "function".to_string(),
+                        function: OaiFunctionCallIn {
+                            name: "get_weather".to_string(),
+                            arguments: r#"{"location":"Paris""#.to_string(),
+                        },
+                    }]),
+                },
+                finish_reason: Some("tool_calls".to_string()),
+            }],
+            usage: None,
+        };
+
+        let result = chat_response_to_chat_result(resp).unwrap();
+        let calls = result.tool_calls();
+
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].input, Value::Null);
+        assert!(calls[0].has_malformed_input());
+        assert_eq!(
+            calls[0].malformed_input_raw(),
+            Some(r#"{"location":"Paris""#),
+        );
     }
 
     #[test]

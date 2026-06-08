@@ -5,10 +5,13 @@ use serde_json::{Map, Value, json};
 
 use crate::core::{
     error::SdkError,
-    message::{Message, MessagePart, Role, ToolCall},
+    message::{Message, MessagePart, ProviderMetadata, Role, ToolCall, ToolOutput},
+    provider_policy::{
+        ToolChoicePolicy, finish_reason_with_tool_override, remove_additional_properties,
+        tool_choice_policy, unknown_finish_reason,
+    },
     request::TextRequest,
     result::{ChatResult, TextResult},
-    tool::ToolChoice,
     types::{FinishReason, ResponseMetadata, Usage as TokenUsage},
 };
 
@@ -184,7 +187,11 @@ pub(super) struct GeminiErrorResponse {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct GeminiErrorDetail {
+    #[serde(default)]
+    pub code: Option<i64>,
     pub message: String,
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 pub(super) fn text_request_to_gemini(
@@ -225,25 +232,27 @@ pub(super) fn text_request_to_gemini(
         }]
     };
 
-    let tool_config = request.tool_choice.as_ref().map(|choice| {
-        let function_calling_config = match choice {
-            ToolChoice::Auto => GeminiFunctionCallingConfig {
+    let tool_config = match tool_choice_policy(request.tool_choice.as_ref()) {
+        ToolChoicePolicy::Default => None,
+        ToolChoicePolicy::Auto => Some(GeminiToolConfig {
+            function_calling_config: GeminiFunctionCallingConfig {
                 mode: "AUTO",
                 allowed_function_names: vec![],
             },
-            ToolChoice::None => GeminiFunctionCallingConfig {
+        }),
+        ToolChoicePolicy::None => Some(GeminiToolConfig {
+            function_calling_config: GeminiFunctionCallingConfig {
                 mode: "NONE",
                 allowed_function_names: vec![],
             },
-            ToolChoice::Required { name } => GeminiFunctionCallingConfig {
+        }),
+        ToolChoicePolicy::Required { name } => Some(GeminiToolConfig {
+            function_calling_config: GeminiFunctionCallingConfig {
                 mode: "ANY",
-                allowed_function_names: vec![name.clone()],
+                allowed_function_names: vec![name.to_string()],
             },
-        };
-        GeminiToolConfig {
-            function_calling_config,
-        }
-    });
+        }),
+    };
 
     let generation_config = if request.max_output_tokens.is_some() || request.temperature.is_some()
     {
@@ -320,7 +329,7 @@ fn message_parts_to_gemini(
             }
             MessagePart::ToolResult(result) => {
                 let Some(call_ref) = tool_call_refs.get(&result.tool_call_id) else {
-                    return Err(SdkError::Api(format!(
+                    return Err(SdkError::api(format!(
                         "Gemini tool result references unknown tool call id: {}",
                         result.tool_call_id
                     )));
@@ -331,7 +340,7 @@ fn message_parts_to_gemini(
                     function_response: Some(GeminiFunctionResponse {
                         id: Some(call_ref.id.clone()),
                         name: call_ref.name.clone(),
-                        response: tool_result_response_value(&result.content),
+                        response: tool_result_response_value(&result.output),
                     }),
                     thought_signature: None,
                 });
@@ -355,11 +364,11 @@ fn tool_call_part(call: &ToolCall) -> GeminiPart {
     }
 }
 
-fn tool_result_response_value(content: &str) -> Value {
-    match serde_json::from_str::<Value>(content) {
-        Ok(Value::Object(map)) => Value::Object(map),
-        Ok(value) => json!({ "result": value }),
-        Err(_) => json!({ "result": content }),
+fn tool_result_response_value(output: &ToolOutput) -> Value {
+    match output {
+        ToolOutput::Json(Value::Object(map)) => Value::Object(map.clone()),
+        ToolOutput::Json(value) => json!({ "result": value }),
+        ToolOutput::Text(text) => json!({ "result": text }),
     }
 }
 
@@ -372,16 +381,16 @@ fn gemini_thought_signature(call: &ToolCall) -> Option<String> {
 }
 
 fn gemini_metadata_string(call: &ToolCall, key: &str) -> Option<String> {
-    let metadata = call.provider_metadata.as_ref()?;
-    let gemini = metadata.get(GEMINI_METADATA_KEY).unwrap_or(metadata);
-    gemini.get(key)?.as_str().map(ToString::to_string)
+    call.provider_metadata
+        .as_ref()?
+        .provider_string(GEMINI_METADATA_KEY, key)
 }
 
 pub(super) fn gemini_tool_metadata(
     id: Option<&str>,
     name: &str,
     thought_signature: Option<&str>,
-) -> Value {
+) -> ProviderMetadata {
     let mut gemini = Map::new();
     if let Some(id) = id {
         gemini.insert(
@@ -402,22 +411,11 @@ pub(super) fn gemini_tool_metadata(
 
     let mut root = Map::new();
     root.insert(GEMINI_METADATA_KEY.to_string(), Value::Object(gemini));
-    Value::Object(root)
+    ProviderMetadata::new(Value::Object(root))
 }
 
 fn gemini_schema(schema: Value) -> Value {
-    match schema {
-        Value::Object(mut map) => {
-            map.remove("additionalProperties");
-            Value::Object(
-                map.into_iter()
-                    .map(|(key, value)| (key, gemini_schema(value)))
-                    .collect(),
-            )
-        }
-        Value::Array(items) => Value::Array(items.into_iter().map(gemini_schema).collect()),
-        other => other,
-    }
+    remove_additional_properties(schema)
 }
 
 pub(super) fn map_finish_reason(finish_reason: &str) -> FinishReason {
@@ -461,7 +459,7 @@ pub(super) fn gemini_response_to_text_result(
             .as_ref()
             .and_then(|feedback| feedback.block_reason.as_deref())
             .unwrap_or("no candidates");
-        return Err(SdkError::Api(format!(
+        return Err(SdkError::api(format!(
             "Gemini response contained no candidates: {}",
             blocked
         )));
@@ -484,7 +482,7 @@ pub(super) fn gemini_response_to_text_result(
         .finish_reason
         .as_deref()
         .map(map_finish_reason)
-        .unwrap_or_else(|| FinishReason::Other("unknown".to_string()));
+        .unwrap_or_else(unknown_finish_reason);
 
     Ok(TextResult {
         text,
@@ -503,7 +501,7 @@ pub(super) fn gemini_response_to_chat_result(
             .as_ref()
             .and_then(|feedback| feedback.block_reason.as_deref())
             .unwrap_or("no candidates");
-        return Err(SdkError::Api(format!(
+        return Err(SdkError::api(format!(
             "Gemini response contained no candidates: {}",
             blocked
         )));
@@ -538,15 +536,8 @@ pub(super) fn gemini_response_to_chat_result(
     let has_tool_calls = parts
         .iter()
         .any(|part| matches!(part, MessagePart::ToolCall(_)));
-    let finish_reason = if has_tool_calls {
-        FinishReason::ToolUse
-    } else {
-        choice
-            .finish_reason
-            .as_deref()
-            .map(map_finish_reason)
-            .unwrap_or_else(|| FinishReason::Other("unknown".to_string()))
-    };
+    let provider_finish_reason = choice.finish_reason.as_deref().map(map_finish_reason);
+    let finish_reason = finish_reason_with_tool_override(provider_finish_reason, has_tool_calls);
 
     Ok(ChatResult {
         parts,
@@ -561,7 +552,7 @@ mod tests {
     use super::*;
     use crate::core::{
         message::{Message, ToolResult},
-        tool::ToolDefinition,
+        tool::{ToolChoice, ToolDefinition},
     };
 
     #[test]
@@ -682,6 +673,23 @@ mod tests {
     }
 
     #[test]
+    fn finish_reason_mapping_is_provider_neutral() {
+        let cases = [
+            ("STOP", FinishReason::Stop),
+            ("MAX_TOKENS", FinishReason::Length),
+            ("SAFETY", FinishReason::ContentFilter),
+            ("PROHIBITED_CONTENT", FinishReason::ContentFilter),
+        ];
+
+        for (provider_reason, expected) in cases {
+            assert_eq!(map_finish_reason(provider_reason), expected);
+        }
+
+        let other = map_finish_reason("UNEXPECTED_REASON");
+        assert_eq!(other, FinishReason::Other("UNEXPECTED_REASON".to_string()));
+    }
+
+    #[test]
     fn request_maps_tool_call_and_result_with_metadata() {
         let call = ToolCall::new("sdk_call_1", "get_weather", json!({"location": "Paris"}))
             .with_provider_metadata(gemini_tool_metadata(
@@ -693,12 +701,12 @@ mod tests {
             Message::user("weather"),
             Message::assistant_parts(vec![MessagePart::ToolCall(call)]),
             Message {
-                role: Role::User,
+                role: Role::Tool,
                 content: String::new(),
-                parts: vec![MessagePart::ToolResult(ToolResult {
-                    tool_call_id: "sdk_call_1".to_string(),
-                    content: json!({"forecast": "cloudy"}).to_string(),
-                })],
+                parts: vec![MessagePart::ToolResult(ToolResult::new(
+                    "sdk_call_1",
+                    json!({"forecast": "cloudy"}),
+                ))],
             },
         ]);
 
@@ -735,12 +743,12 @@ mod tests {
     fn request_rejects_tool_result_before_prior_tool_call() {
         let request = TextRequest::new(vec![
             Message {
-                role: Role::User,
+                role: Role::Tool,
                 content: String::new(),
-                parts: vec![MessagePart::ToolResult(ToolResult {
-                    tool_call_id: "call_1".to_string(),
-                    content: json!({"forecast": "cloudy"}).to_string(),
-                })],
+                parts: vec![MessagePart::ToolResult(ToolResult::new(
+                    "call_1",
+                    json!({"forecast": "cloudy"}),
+                ))],
             },
             Message::assistant_parts(vec![MessagePart::ToolCall(ToolCall::new(
                 "call_1",
@@ -750,7 +758,7 @@ mod tests {
         ]);
 
         let err = text_request_to_gemini(&request).unwrap_err();
-        assert!(matches!(err, SdkError::Api(message) if message.contains("call_1")));
+        assert!(matches!(err, SdkError::Api { message, .. } if message.contains("call_1")));
     }
 
     #[test]
@@ -802,10 +810,8 @@ mod tests {
         assert_eq!(calls[0].id, "call_1");
         assert_eq!(calls[0].name, "get_weather");
         assert_eq!(calls[0].input["location"], "Paris");
-        assert_eq!(
-            calls[0].provider_metadata.as_ref().unwrap()["gemini"]["thoughtSignature"],
-            "sig_123"
-        );
+        let metadata = calls[0].provider_metadata.as_ref().unwrap();
+        assert_eq!(metadata.as_raw()["gemini"]["thoughtSignature"], "sig_123");
     }
 
     #[test]
@@ -816,6 +822,6 @@ mod tests {
         .unwrap();
 
         let err = gemini_response_to_chat_result(resp).unwrap_err();
-        assert!(matches!(err, SdkError::Api(message) if message.contains("SAFETY")));
+        assert!(matches!(err, SdkError::Api { message, .. } if message.contains("SAFETY")));
     }
 }

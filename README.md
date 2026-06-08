@@ -50,6 +50,38 @@ To enable the framework-independent AI SDK UI-message stream adapter:
 another-ai-sdk = { path = "/path/to/rust_ai_sdk", features = ["message-stream"] }
 ```
 
+### Cargo Features
+
+Default features are `providers-all` plus `streaming`, which keeps the
+current batteries-included provider behavior.
+
+| Feature | Behavior |
+| --- | --- |
+| `openai` | Enables the OpenAI provider module and its HTTP client dependency. |
+| `anthropic` | Enables the Anthropic provider module and its HTTP client dependency. |
+| `gemini` | Enables the Gemini provider module and its HTTP client dependency. |
+| `providers-all` | Enables `openai`, `anthropic`, and `gemini`. |
+| `streaming` | Enables SSE provider streaming support via `eventsource-stream` and `reqwest` streaming. |
+| `message-stream` | Enables the AI SDK UI-message SSE adapter. It does not enable provider modules by itself. |
+
+For core SDK types without provider HTTP dependencies:
+
+```toml
+another-ai-sdk = { path = "/path/to/rust_ai_sdk", default-features = false }
+```
+
+For one provider without SSE streaming:
+
+```toml
+another-ai-sdk = { path = "/path/to/rust_ai_sdk", default-features = false, features = ["openai"] }
+```
+
+For one provider with SSE streaming:
+
+```toml
+another-ai-sdk = { path = "/path/to/rust_ai_sdk", default-features = false, features = ["openai", "streaming"] }
+```
+
 Provider examples require API keys:
 
 ```sh
@@ -84,13 +116,13 @@ Generate one text response:
 
 ```rust
 use another_ai_sdk::prelude::*;
-use another_ai_sdk::providers::openai::model::OpenAiChatModel;
+use another_ai_sdk::providers::openai::{OpenAiChatModel, OpenAiModel};
 
 #[tokio::main]
 async fn main() -> Result<(), SdkError> {
     let model = OpenAiChatModel::new(
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY is required"),
-        "gpt-4.1-mini",
+        OpenAiModel::Gpt4_1Mini,
     );
 
     let request = TextRequest::builder()
@@ -111,14 +143,14 @@ Stream text deltas:
 
 ```rust
 use another_ai_sdk::prelude::*;
-use another_ai_sdk::providers::openai::model::OpenAiChatModel;
+use another_ai_sdk::providers::openai::{OpenAiChatModel, OpenAiModel};
 use futures_util::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), SdkError> {
     let model = OpenAiChatModel::new(
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY is required"),
-        "gpt-4.1-mini",
+        OpenAiModel::Gpt4_1Mini,
     );
 
     let request = TextRequest::prompt("Write a short haiku about Rust.");
@@ -146,14 +178,14 @@ server decides what each tool is allowed to do.
 
 ```rust
 use another_ai_sdk::prelude::*;
-use another_ai_sdk::providers::openai::model::OpenAiChatModel;
+use another_ai_sdk::providers::openai::{OpenAiChatModel, OpenAiModel};
 use serde_json::{Value, json};
 
 #[tokio::main]
 async fn main() -> Result<(), SdkError> {
     let model = OpenAiChatModel::new(
         std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY is required"),
-        "gpt-4.1-mini",
+        OpenAiModel::Gpt4_1Mini,
     );
 
     let tools = ToolRegistry::new().register(
@@ -190,7 +222,10 @@ async fn main() -> Result<(), SdkError> {
         .build();
 
     loop {
-        match run_turn(&model, request).await? {
+        let base_request = request.clone();
+        let outcome = run_turn(&model, request).await?;
+
+        match outcome {
             TurnOutcome::Completed(result) => {
                 println!("{}", result.text());
                 break;
@@ -200,9 +235,8 @@ async fn main() -> Result<(), SdkError> {
                 tool_calls,
                 ..
             } => {
-                let mut continuation =
-                    ContinuationBuilder::from_request(request)
-                        .with_assistant_turn(assistant_parts);
+                let mut continuation = ContinuationBuilder::from_request(base_request)
+                    .with_assistant_turn(assistant_parts);
 
                 for call in &tool_calls {
                     let output = tools.execute(call).await?;
@@ -227,16 +261,20 @@ add-on returns `bytes::Bytes`, not Axum/Rocket/Actix response types.
 
 ```rust
 use another_ai_sdk::prelude::*;
-use another_ai_sdk::providers::openai::model::OpenAiChatModel;
+use another_ai_sdk::providers::openai::OpenAiChatModel;
 
-async fn handler(input: MessageStreamRequest, model: OpenAiChatModel, tools: ToolRegistry) {
+async fn handler(
+    input: MessageStreamRequest,
+    model: OpenAiChatModel,
+    tools: ToolRegistry,
+) -> Result<(), Box<dyn std::error::Error>> {
     let options = MessageStreamOptions::default();
     let request = compose_text_request(
         input,
         "You are a concise assistant.",
         options,
         tools.definitions(),
-    );
+    )?;
 
     let stream = stream_text_messages(model, request, tools, options);
 
@@ -246,6 +284,8 @@ async fn handler(input: MessageStreamRequest, model: OpenAiChatModel, tools: Too
     let _cache_control = MESSAGE_STREAM_CACHE_CONTROL;
     let _protocol_header = MESSAGE_STREAM_PROTOCOL_HEADER;
     let _protocol_version = MESSAGE_STREAM_PROTOCOL_VERSION;
+
+    Ok(())
 }
 ```
 
@@ -283,4 +323,13 @@ using the `message-stream` protocol helpers:
 cd examples/chatbot
 just server-explicit
 just web
+```
+
+Validate the public API surface and examples from the repository root:
+
+```sh
+just test
+just check-examples
+just check-chatbot-web
+just doc
 ```

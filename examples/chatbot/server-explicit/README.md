@@ -55,7 +55,7 @@ It uses these SDK helpers:
 It does not use `compose_text_request(...)`; the request builder stays visible:
 
 ```rust
-let messages = messages_to_sdk_messages(input, SYSTEM_PROMPT);
+let messages = messages_to_sdk_messages(input, SYSTEM_PROMPT)?;
 let tool_definitions = tools.definitions();
 
 TextRequest::builder()

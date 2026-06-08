@@ -9,8 +9,13 @@ pub(super) enum OpenAiClientError {
 impl From<OpenAiClientError> for SdkError {
     fn from(value: OpenAiClientError) -> Self {
         match value {
-            OpenAiClientError::Reqwest(e) => SdkError::Http(e.to_string()),
-            OpenAiClientError::Serde(e) => SdkError::Serialization(e.to_string()),
+            OpenAiClientError::Reqwest(e) => SdkError::provider_http(
+                "OpenAI",
+                e.status().map(|status| status.as_u16()),
+                e.to_string(),
+                None,
+            ),
+            OpenAiClientError::Serde(e) => SdkError::serialization(Some("OpenAI"), e.to_string()),
         }
     }
 }

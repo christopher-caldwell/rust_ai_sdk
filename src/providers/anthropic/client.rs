@@ -1,23 +1,36 @@
+#[cfg(feature = "streaming")]
 use std::collections::HashMap;
 
+use serde::de::DeserializeOwned;
+
+#[cfg(feature = "streaming")]
+use crate::core::message::ToolCall;
 use crate::core::{
     error::SdkError,
     request::TextRequest,
     result::{ChatResult, TextResult},
 };
 
+#[cfg(feature = "streaming")]
+use super::types::{
+    ContentBlockDeltaEvent, ContentBlockStart, ContentBlockStartEvent, ContentBlockStopEvent,
+    ErrorEvent, EventEnvelope, MessageDeltaEvent, MessageStartEvent, map_stop_reason,
+};
 use super::{
     error::{AnthropicClientError, truncate_body},
     types::{
-        AnthropicErrorResponse, AnthropicResponse, ContentBlockDeltaEvent, ContentBlockStart,
-        ContentBlockStartEvent, ContentBlockStopEvent, ErrorEvent, EventEnvelope,
-        MessageDeltaEvent, MessageStartEvent, anthropic_response_to_chat_result,
-        anthropic_response_to_text_result, map_stop_reason, text_request_to_anthropic,
+        AnthropicErrorResponse, AnthropicResponse, anthropic_response_to_chat_result,
+        anthropic_response_to_text_result, text_request_to_anthropic,
     },
 };
-use crate::core::stream::{StreamEvent, TextEventStream};
+#[cfg(feature = "streaming")]
+use crate::core::stream::StreamEvent;
+use crate::core::stream::TextEventStream;
+#[cfg(feature = "streaming")]
 use crate::core::types::{FinishReason, ResponseMetadata, Usage as TokenUsage};
+#[cfg(feature = "streaming")]
 use eventsource_stream::Eventsource;
+#[cfg(feature = "streaming")]
 use futures_util::StreamExt;
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
@@ -53,39 +66,22 @@ impl AnthropicClient {
         model: &str,
         request: &TextRequest,
     ) -> Result<TextResult, SdkError> {
+        request.validate()?;
+
         let body = text_request_to_anthropic(model, request, false);
         let url = format!("{}/messages", self.base_url);
 
-        let response = self
-            .http
-            .post(&url)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))?;
+        let response = send_json_request(
+            self.http
+                .post(&url)
+                .header("x-api-key", &self.api_key)
+                .header("anthropic-version", "2023-06-01")
+                .json(&body),
+        )
+        .await?;
 
-        let status = response.status();
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))?;
-
-        if !status.is_success() {
-            let text = String::from_utf8_lossy(&bytes);
-            let snippet = truncate_body(text.as_ref(), ERROR_BODY_SNIPPET_LEN);
-            if let Ok(err) = serde_json::from_slice::<AnthropicErrorResponse>(&bytes) {
-                return Err(SdkError::Api(format!(
-                    "{} (HTTP {})",
-                    err.error.message, status
-                )));
-            }
-            return Err(SdkError::Http(format!("HTTP {}: {}", status, snippet)));
-        }
-
-        let parsed: AnthropicResponse = serde_json::from_slice(&bytes)
-            .map_err(|e| SdkError::from(AnthropicClientError::Serde(e)))?;
+        let bytes = decode_response_bytes(response).await?;
+        let parsed: AnthropicResponse = decode_json_response(&bytes)?;
         anthropic_response_to_text_result(parsed)
     }
 
@@ -94,59 +90,44 @@ impl AnthropicClient {
         model: &str,
         request: &TextRequest,
     ) -> Result<ChatResult, SdkError> {
+        request.validate()?;
+
         let body = text_request_to_anthropic(model, request, false);
         let url = format!("{}/messages", self.base_url);
 
-        let response = self
-            .http
-            .post(&url)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))?;
+        let response = send_json_request(
+            self.http
+                .post(&url)
+                .header("x-api-key", &self.api_key)
+                .header("anthropic-version", "2023-06-01")
+                .json(&body),
+        )
+        .await?;
 
-        let status = response.status();
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))?;
-
-        if !status.is_success() {
-            let text = String::from_utf8_lossy(&bytes);
-            let snippet = truncate_body(text.as_ref(), ERROR_BODY_SNIPPET_LEN);
-            if let Ok(err) = serde_json::from_slice::<AnthropicErrorResponse>(&bytes) {
-                return Err(SdkError::Api(format!(
-                    "{} (HTTP {})",
-                    err.error.message, status
-                )));
-            }
-            return Err(SdkError::Http(format!("HTTP {}: {}", status, snippet)));
-        }
-
-        let parsed: AnthropicResponse = serde_json::from_slice(&bytes)
-            .map_err(|e| SdkError::from(AnthropicClientError::Serde(e)))?;
+        let bytes = decode_response_bytes(response).await?;
+        let parsed: AnthropicResponse = decode_json_response(&bytes)?;
         anthropic_response_to_chat_result(parsed)
     }
 
+    #[cfg(feature = "streaming")]
     pub async fn stream(
         &self,
         model: &str,
         request: &TextRequest,
     ) -> Result<TextEventStream, SdkError> {
+        request.validate()?;
+
         let body = text_request_to_anthropic(model, request, true);
         let url = format!("{}/messages", self.base_url);
 
-        let response = self
-            .http
-            .post(&url)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", "2023-06-01")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))?;
+        let response = send_json_request(
+            self.http
+                .post(&url)
+                .header("x-api-key", &self.api_key)
+                .header("anthropic-version", "2023-06-01")
+                .json(&body),
+        )
+        .await?;
 
         let status = response.status();
         if !status.is_success() {
@@ -154,15 +135,7 @@ impl AnthropicClient {
                 .bytes()
                 .await
                 .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))?;
-            let text = String::from_utf8_lossy(&bytes);
-            let snippet = truncate_body(text.as_ref(), ERROR_BODY_SNIPPET_LEN);
-            if let Ok(err) = serde_json::from_slice::<AnthropicErrorResponse>(&bytes) {
-                return Err(SdkError::Api(format!(
-                    "{} (HTTP {})",
-                    err.error.message, status
-                )));
-            }
-            return Err(SdkError::Http(format!("HTTP {}: {}", status, snippet)));
+            return Err(provider_error_from_bytes(status, &bytes));
         }
 
         let events = Box::pin(response.bytes_stream().eventsource());
@@ -180,7 +153,7 @@ impl AnthropicClient {
                         Some((items, (events, acc, false)))
                     }
                     Some(Err(e)) => {
-                        let items = vec![Err(SdkError::Api(format!(
+                        let items = vec![Err(SdkError::api(format!(
                             "EventSource stream error: {}",
                             e
                         )))];
@@ -200,12 +173,77 @@ impl AnthropicClient {
 
         Ok(Box::pin(stream))
     }
+
+    #[cfg(not(feature = "streaming"))]
+    pub async fn stream(
+        &self,
+        _model: &str,
+        _request: &TextRequest,
+    ) -> Result<TextEventStream, SdkError> {
+        Err(SdkError::Validation(
+            "Anthropic streaming requires the `streaming` feature.".to_string(),
+        ))
+    }
+}
+
+async fn send_json_request(
+    request: reqwest::RequestBuilder,
+) -> Result<reqwest::Response, SdkError> {
+    request
+        .send()
+        .await
+        .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))
+}
+
+async fn decode_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, SdkError> {
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))?;
+
+    if !status.is_success() {
+        return Err(provider_error_from_bytes(status, &bytes));
+    }
+
+    Ok(bytes.to_vec())
+}
+
+fn decode_json_response<T>(bytes: &[u8]) -> Result<T, SdkError>
+where
+    T: DeserializeOwned,
+{
+    serde_json::from_slice(bytes).map_err(|e| SdkError::from(AnthropicClientError::Serde(e)))
+}
+
+fn provider_error_from_bytes(status: reqwest::StatusCode, bytes: &[u8]) -> SdkError {
+    let text = String::from_utf8_lossy(bytes);
+    let snippet = truncate_body(text.as_ref(), ERROR_BODY_SNIPPET_LEN);
+
+    if let Ok(err) = serde_json::from_slice::<AnthropicErrorResponse>(bytes) {
+        return SdkError::provider_api(
+            "Anthropic",
+            Some(status.as_u16()),
+            None,
+            err.error.error_type,
+            err.error.message,
+            Some(snippet),
+        );
+    }
+
+    SdkError::provider_http(
+        "Anthropic",
+        Some(status.as_u16()),
+        snippet.clone(),
+        Some(snippet),
+    )
 }
 
 // ---------------------------------------------------------------------------
 // Internal streaming helpers
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "streaming")]
 #[derive(Default)]
 struct StreamAccumulator {
     id: Option<String>,
@@ -217,6 +255,7 @@ struct StreamAccumulator {
     tool_call_buffers: HashMap<u32, ToolCallBuffer>,
 }
 
+#[cfg(feature = "streaming")]
 #[derive(Default)]
 struct ToolCallBuffer {
     id: String,
@@ -224,6 +263,7 @@ struct ToolCallBuffer {
     input: String,
 }
 
+#[cfg(feature = "streaming")]
 impl StreamAccumulator {
     fn build_finished_event(&mut self) -> StreamEvent {
         self.finished_emitted = true;
@@ -259,6 +299,7 @@ impl StreamAccumulator {
     }
 }
 
+#[cfg(feature = "streaming")]
 fn process_event(data: &str, acc: &mut StreamAccumulator) -> Vec<Result<StreamEvent, SdkError>> {
     // Step 1: read just the type tag — fail only on total JSON chaos.
     let envelope: EventEnvelope = match serde_json::from_str(data) {
@@ -337,14 +378,13 @@ fn process_event(data: &str, acc: &mut StreamAccumulator) -> Vec<Result<StreamEv
                     return vec![];
                 };
 
-                let input = serde_json::from_str(&buffer.input)
-                    .unwrap_or_else(|_| serde_json::Value::String(buffer.input.clone()));
+                let call = ToolCall::from_json_input(buffer.id, buffer.name, &buffer.input);
                 vec![Ok(StreamEvent::ToolCallReady {
-                    id: buffer.id,
-                    name: buffer.name,
+                    id: call.id,
+                    name: call.name,
                     index: evt.index,
-                    input,
-                    provider_metadata: None,
+                    input: call.input,
+                    provider_metadata: call.provider_metadata,
                 })]
             }
             Err(e) => vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
@@ -371,7 +411,7 @@ fn process_event(data: &str, acc: &mut StreamAccumulator) -> Vec<Result<StreamEv
         }
 
         "error" => match serde_json::from_str::<ErrorEvent>(data) {
-            Ok(evt) => vec![Err(SdkError::Api(evt.error.message))],
+            Ok(evt) => vec![Err(SdkError::api(evt.error.message))],
             Err(e) => vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
         },
 
@@ -483,8 +523,15 @@ mod tests {
         mock.assert_async().await;
 
         match result {
-            Err(SdkError::Api(msg)) => {
-                assert!(msg.contains("Invalid API key.") && msg.contains("HTTP 401"))
+            Err(SdkError::Api {
+                message,
+                status,
+                error_type,
+                ..
+            }) => {
+                assert!(message.contains("Invalid API key."));
+                assert_eq!(status, Some(401));
+                assert_eq!(error_type.as_deref(), Some("authentication_error"));
             }
             _ => panic!("Expected Api error, got {:?}", result),
         }
@@ -508,9 +555,12 @@ mod tests {
         mock.assert_async().await;
 
         match result {
-            Err(SdkError::Http(msg)) => assert!(
-                msg.contains("Bad Gateway Timeout Exception...") && msg.contains("HTTP 502")
-            ),
+            Err(SdkError::Http {
+                message, status, ..
+            }) => {
+                assert!(message.contains("Bad Gateway Timeout Exception..."));
+                assert_eq!(status, Some(502));
+            }
             _ => panic!("Expected Http error, got {:?}", result),
         }
     }
@@ -520,6 +570,7 @@ mod tests {
     // ------------------------------------------------------------------
 
     /// Unknown event types must be silently ignored (no output, no error).
+    #[cfg(feature = "streaming")]
     #[test]
     fn test_process_event_unknown_type_ignored() {
         let mut acc = StreamAccumulator::default();
@@ -531,6 +582,7 @@ mod tests {
 
     /// A recognized event type with malformed payload must produce exactly one
     /// `SdkError::Serde` error.
+    #[cfg(feature = "streaming")]
     #[test]
     fn test_process_event_malformed_known_type_errors() {
         let mut acc = StreamAccumulator::default();
@@ -539,7 +591,7 @@ mod tests {
         let result = process_event(data, &mut acc);
         assert_eq!(result.len(), 1);
         assert!(
-            matches!(&result[0], Err(SdkError::Serialization(_))),
+            matches!(&result[0], Err(SdkError::Serialization { .. })),
             "Expected SdkError::Serde, got {:?}",
             result[0]
         );
@@ -548,6 +600,7 @@ mod tests {
     /// `ping` and `content_block_start` / `content_block_stop` should also be
     /// silently ignored (they are well-known Anthropic event types that we don't
     /// need to process, but must not error on).
+    #[cfg(feature = "streaming")]
     #[test]
     fn test_process_event_known_passthrough_types_ignored() {
         let mut acc = StreamAccumulator::default();
@@ -565,6 +618,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "streaming")]
     #[test]
     fn test_process_event_content_block_start_tool_use() {
         let mut acc = StreamAccumulator::default();
@@ -584,6 +638,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "streaming")]
     #[test]
     fn test_process_event_input_json_delta() {
         let mut acc = StreamAccumulator::default();
@@ -611,6 +666,42 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_process_event_preserves_malformed_tool_json() {
+        let mut acc = StreamAccumulator::default();
+        let _ = process_event(
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_bad","name":"get_weather"}}"#,
+            &mut acc,
+        );
+        let _ = process_event(
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\":\"Paris\""}}"#,
+            &mut acc,
+        );
+        let result = process_event(r#"{"type":"content_block_stop","index":0}"#, &mut acc);
+
+        assert_eq!(result.len(), 1);
+        match result.into_iter().next().unwrap().unwrap() {
+            StreamEvent::ToolCallReady {
+                id,
+                name,
+                input,
+                provider_metadata,
+                ..
+            } => {
+                assert_eq!(id, "toolu_bad");
+                assert_eq!(name, "get_weather");
+                assert_eq!(input, serde_json::Value::Null);
+                let metadata = provider_metadata.expect("malformed input metadata");
+                assert_eq!(
+                    metadata.as_raw()["another_ai_sdk"]["tool_input"]["state"],
+                    "malformed_json"
+                );
+            }
+            other => panic!("Expected ToolCallReady, got {:?}", other),
+        }
+    }
+
+    #[cfg(feature = "streaming")]
     #[test]
     fn test_process_event_content_block_stop_tool_use() {
         let mut acc = StreamAccumulator::default();
@@ -646,6 +737,7 @@ mod tests {
     // Streaming integration tests
     // ------------------------------------------------------------------
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_setup_error() {
         let mut server = mockito::Server::new_async().await;
@@ -661,9 +753,10 @@ mod tests {
 
         mock.assert_async().await;
 
-        assert!(matches!(result, Err(SdkError::Http(_))));
+        assert!(matches!(result, Err(SdkError::Http { .. })));
     }
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_success() {
         let mut server = mockito::Server::new_async().await;
@@ -738,6 +831,7 @@ mod tests {
         assert!(finished);
     }
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_fallback_finished() {
         let mut server = mockito::Server::new_async().await;
@@ -801,6 +895,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_tool_use_single_end_to_end() {
         let mut server = mockito::Server::new_async().await;
@@ -873,6 +968,7 @@ mod tests {
         assert!(finished);
     }
 
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_mixed_text_and_tool() {
         let mut server = mockito::Server::new_async().await;

@@ -9,8 +9,13 @@ pub(super) enum GeminiClientError {
 impl From<GeminiClientError> for SdkError {
     fn from(value: GeminiClientError) -> Self {
         match value {
-            GeminiClientError::Reqwest(e) => SdkError::Http(e.to_string()),
-            GeminiClientError::Serde(e) => SdkError::Serialization(e.to_string()),
+            GeminiClientError::Reqwest(e) => SdkError::provider_http(
+                "Gemini",
+                e.status().map(|status| status.as_u16()),
+                e.to_string(),
+                None,
+            ),
+            GeminiClientError::Serde(e) => SdkError::serialization(Some("Gemini"), e.to_string()),
         }
     }
 }

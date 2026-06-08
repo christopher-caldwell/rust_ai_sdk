@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::core::{
     error::SdkError,
-    message::{Message, MessagePart, ToolCall},
+    message::{Message, MessagePart, ProviderMetadata, ToolCall, ToolOutput},
     model::LanguageModel,
     request::TextRequest,
     result::ChatResult,
@@ -67,22 +67,20 @@ impl ContinuationBuilder {
     pub fn with_tool_result(
         mut self,
         tool_call_id: impl Into<String>,
-        result_content: impl Into<String>,
+        output: impl Into<ToolOutput>,
     ) -> Self {
         self.request
             .messages
-            .push(Message::tool_result(tool_call_id, result_content));
+            .push(Message::tool_result(tool_call_id, output));
         self
     }
 
-    pub fn with_tool_results(
-        mut self,
-        results: impl IntoIterator<Item = (String, String)>,
-    ) -> Self {
-        for (id, content) in results {
-            self.request
-                .messages
-                .push(Message::tool_result(id, content));
+    pub fn with_tool_results<O>(mut self, results: impl IntoIterator<Item = (String, O)>) -> Self
+    where
+        O: Into<ToolOutput>,
+    {
+        for (id, output) in results {
+            self.request.messages.push(Message::tool_result(id, output));
         }
         self
     }
@@ -102,7 +100,7 @@ struct ToolCallBuffer {
     name: String,
     arguments: String,
     input: Option<Value>,
-    provider_metadata: Option<Value>,
+    provider_metadata: Option<ProviderMetadata>,
 }
 
 /// Accumulates a provider-neutral stream into one assistant turn.
@@ -177,12 +175,7 @@ impl TurnAccumulator {
                 }
                 PartSlot::ToolIndex(idx) => {
                     if let Some(buf) = self.tool_buffers.remove(&idx) {
-                        let input = buf.input.unwrap_or_else(|| {
-                            serde_json::from_str(&buf.arguments)
-                                .unwrap_or(Value::String(buf.arguments.clone()))
-                        });
-                        let mut call = ToolCall::new(buf.id, buf.name, input);
-                        call.provider_metadata = buf.provider_metadata;
+                        let call = tool_call_from_buffer(buf);
                         parts.push(MessagePart::ToolCall(call));
                     }
                 }
@@ -261,7 +254,7 @@ impl TurnAccumulator {
         id: String,
         name: String,
         input: Value,
-        provider_metadata: Option<Value>,
+        provider_metadata: Option<ProviderMetadata>,
     ) {
         self.ensure_tool_slot(index);
         let buffer = self.tool_buffers.entry(index).or_insert(ToolCallBuffer {
@@ -296,6 +289,30 @@ impl TurnAccumulator {
         self.finish_reason = Some(finish_reason);
         self.usage = usage;
         self.response = Some(response);
+    }
+}
+
+fn tool_call_from_buffer(buf: ToolCallBuffer) -> ToolCall {
+    if let Some(input) = buf.input {
+        let mut call = ToolCall::new(buf.id, buf.name, input);
+        call.provider_metadata = buf.provider_metadata;
+        return call;
+    }
+
+    match serde_json::from_str(&buf.arguments) {
+        Ok(input) => {
+            let mut call = ToolCall::new(buf.id, buf.name, input);
+            call.provider_metadata = buf.provider_metadata;
+            call
+        }
+        Err(error) => {
+            let metadata = ToolCall::metadata_with_malformed_input(
+                buf.provider_metadata,
+                buf.arguments.clone(),
+                error.to_string(),
+            );
+            ToolCall::new(buf.id, buf.name, Value::Null).with_provider_metadata(metadata)
+        }
     }
 }
 
@@ -573,7 +590,7 @@ mod tests {
                 name: "get_weather".to_string(),
                 index: 0,
                 input: serde_json::json!({"location": "Paris"}),
-                provider_metadata: Some(metadata.clone()),
+                provider_metadata: Some(metadata.clone().into()),
             },
             StreamEvent::Finished {
                 finish_reason: FinishReason::ToolUse,
@@ -588,9 +605,67 @@ mod tests {
 
         match outcome {
             TurnOutcome::ToolsRequired { tool_calls, .. } => {
-                assert_eq!(tool_calls[0].provider_metadata.as_ref(), Some(&metadata));
+                assert_eq!(
+                    tool_calls[0].provider_metadata.as_ref().map(|m| m.as_raw()),
+                    Some(&metadata),
+                );
             }
             TurnOutcome::Completed(_) => panic!("Expected ToolsRequired"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_preserves_malformed_tool_json_from_deltas() {
+        let model = MockModel::new(vec![
+            StreamEvent::ToolCallStarted {
+                id: "call_bad".to_string(),
+                name: "get_weather".to_string(),
+                index: 0,
+            },
+            StreamEvent::ToolCallDelta {
+                id: "call_bad".to_string(),
+                index: 0,
+                input_delta: r#"{"location":"Paris""#.to_string(),
+            },
+            StreamEvent::Finished {
+                finish_reason: FinishReason::ToolUse,
+                usage: None,
+                response: meta(),
+            },
+        ]);
+
+        let outcome = run_turn(&model, TextRequest::prompt("weather?"))
+            .await
+            .unwrap();
+
+        match outcome {
+            TurnOutcome::ToolsRequired { tool_calls, .. } => {
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].input, serde_json::Value::Null);
+                assert!(tool_calls[0].has_malformed_input());
+                assert_eq!(
+                    tool_calls[0].malformed_input_raw(),
+                    Some(r#"{"location":"Paris""#),
+                );
+            }
+            TurnOutcome::Completed(_) => panic!("Expected ToolsRequired"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_turn_without_finished_uses_unknown_finish_reason() {
+        let model = MockModel::new(vec![StreamEvent::TextDelta("hello".to_string())]);
+
+        let outcome = run_turn(&model, TextRequest::prompt("hi")).await.unwrap();
+
+        match outcome {
+            TurnOutcome::Completed(result) => {
+                assert_eq!(result.text(), "hello");
+                assert!(
+                    matches!(result.finish_reason, FinishReason::Other(reason) if reason == "unknown")
+                );
+            }
+            TurnOutcome::ToolsRequired { .. } => panic!("Expected Completed"),
         }
     }
 
@@ -701,7 +776,7 @@ mod tests {
         ));
         assert!(matches!(
             continuation.messages[2].role,
-            crate::core::message::Role::User
+            crate::core::message::Role::Tool
         ));
     }
 }

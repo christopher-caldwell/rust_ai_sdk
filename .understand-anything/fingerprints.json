@@ -1,0 +1,5079 @@
+{
+  "version": "1.0.0",
+  "gitCommitHash": "af8406d56369d4402bbe81431c1a6d812a9bdacd",
+  "generatedAt": "2026-05-30T21:53:43.042Z",
+  "files": {
+    ".understand-anything/.understandignore": {
+      "filePath": ".understand-anything/.understandignore",
+      "contentHash": "14195f89aef392a1fcb6349ca7cddf0b96b6e4d6448e52190d112c1f4952cdaa",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 24,
+      "hasStructuralAnalysis": false
+    },
+    "Cargo.toml": {
+      "filePath": "Cargo.toml",
+      "contentHash": "c93aead3055150e995b0fd93b74d52a8e3b375117bec917ee3751865b87e7e67",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 35,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/Justfile": {
+      "filePath": "examples/chatbot/Justfile",
+      "contentHash": "cb9d0bda54e61b7680521da8c645f7bab07ab34522b0488c560642280a363708",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 20,
+      "hasStructuralAnalysis": false
+    },
+    "examples/chatbot/server-explicit/.env.example": {
+      "filePath": "examples/chatbot/server-explicit/.env.example",
+      "contentHash": "9e0637a317e3a66cb87b612dc17f638646998c299f5849b06e421a4fd07773a3",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 4,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/server-explicit/Cargo.toml": {
+      "filePath": "examples/chatbot/server-explicit/Cargo.toml",
+      "contentHash": "aaea4336201575c5e79492b5c07722910fd0bd40691cae0c20949ca714bca64b",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 15,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/server-explicit/Justfile": {
+      "filePath": "examples/chatbot/server-explicit/Justfile",
+      "contentHash": "54e0c627d69d3db8f9b68d74f0c578b8691c94cf026c450fe69587c041324312",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 10,
+      "hasStructuralAnalysis": false
+    },
+    "examples/chatbot/server-explicit/README.md": {
+      "filePath": "examples/chatbot/server-explicit/README.md",
+      "contentHash": "c172c91fe9f137983bf0708a3560e855b7f33b62211c9fa43381e2d3f2108e37",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 87,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/server-explicit/src/main.rs": {
+      "filePath": "examples/chatbot/server-explicit/src/main.rs",
+      "contentHash": "731a3e05c2ad1db2e83e2c9dd939026fec461ff772b4919c8c32597b9d056f59",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "returnType": "Result<(), Box<dyn std::error::Error>>",
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "chat_handler",
+          "params": [
+            "State(state)",
+            "Json(input)"
+          ],
+          "returnType": "impl IntoResponse",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "build_text_request",
+          "params": [
+            "input",
+            "tools",
+            "options"
+          ],
+          "returnType": "TextRequest",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "sse_response",
+          "params": [
+            "stream"
+          ],
+          "returnType": "Response",
+          "exported": false,
+          "lineCount": 15
+        },
+        {
+          "name": "demo_tool_registry",
+          "params": [],
+          "returnType": "ToolRegistry",
+          "exported": false,
+          "lineCount": 61
+        },
+        {
+          "name": "fake_weather",
+          "params": [
+            "location"
+          ],
+          "returnType": "Value",
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "load_env",
+          "params": [],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "openai_api_key",
+          "params": [],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "openai_model",
+          "params": [],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "port",
+          "params": [],
+          "returnType": "u16",
+          "exported": false,
+          "lineCount": 6
+        }
+      ],
+      "classes": [
+        {
+          "name": "AppState",
+          "methods": [],
+          "properties": [
+            "model",
+            "tools"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "std::net",
+          "specifiers": [
+            "SocketAddr"
+          ]
+        },
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "providers::openai::model::OpenAiChatModel"
+          ]
+        },
+        {
+          "source": "axum",
+          "specifiers": [
+            "Json",
+            "Router",
+            "body::Body",
+            "extract::State"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value",
+            "json"
+          ]
+        },
+        {
+          "source": "tokio::net",
+          "specifiers": [
+            "TcpListener"
+          ]
+        },
+        {
+          "source": "tracing_subscriber",
+          "specifiers": [
+            "fmt"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 194,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/server/.env.example": {
+      "filePath": "examples/chatbot/server/.env.example",
+      "contentHash": "fc87e77aa5818885642091c4807246e5281c795e8c5467fdce0a584a526b63f0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 2,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/server/Cargo.toml": {
+      "filePath": "examples/chatbot/server/Cargo.toml",
+      "contentHash": "ab4de8697c807725b43b31f67917e5816021800e0b6c1e9d8a5d1961d2683e58",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 15,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/server/Justfile": {
+      "filePath": "examples/chatbot/server/Justfile",
+      "contentHash": "54e0c627d69d3db8f9b68d74f0c578b8691c94cf026c450fe69587c041324312",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 10,
+      "hasStructuralAnalysis": false
+    },
+    "examples/chatbot/server/README.md": {
+      "filePath": "examples/chatbot/server/README.md",
+      "contentHash": "9b0d213a20362ae9b3c2b7dc274e661e39c10421fd8c9437aeb8e01c3fb2f5e3",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 212,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/server/src/main.rs": {
+      "filePath": "examples/chatbot/server/src/main.rs",
+      "contentHash": "cb2eab9643fec6050e956286105f6e9f82fe7cd4ec5f25af634ce99dfca0b584",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "returnType": "Result<(), Box<dyn std::error::Error>>",
+          "exported": false,
+          "lineCount": 29
+        },
+        {
+          "name": "chat_handler",
+          "params": [
+            "State(state)",
+            "Json(input)"
+          ],
+          "returnType": "impl IntoResponse",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "demo_tool_registry",
+          "params": [],
+          "returnType": "ToolRegistry",
+          "exported": false,
+          "lineCount": 61
+        },
+        {
+          "name": "fake_weather",
+          "params": [
+            "location"
+          ],
+          "returnType": "Value",
+          "exported": false,
+          "lineCount": 10
+        }
+      ],
+      "classes": [
+        {
+          "name": "AppState",
+          "methods": [],
+          "properties": [
+            "model",
+            "tools"
+          ],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "std::net",
+          "specifiers": [
+            "SocketAddr"
+          ]
+        },
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "providers::openai::model::OpenAiChatModel"
+          ]
+        },
+        {
+          "source": "axum",
+          "specifiers": [
+            "Json",
+            "Router",
+            "body::Body",
+            "extract::State"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value",
+            "json"
+          ]
+        },
+        {
+          "source": "tokio::net",
+          "specifiers": [
+            "TcpListener"
+          ]
+        },
+        {
+          "source": "tracing_subscriber",
+          "specifiers": [
+            "fmt"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 155,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/web/index.html": {
+      "filePath": "examples/chatbot/web/index.html",
+      "contentHash": "cf25f96c98b87bb1b7a4750cf232c2e89289dbef5d327e8ed1ab7ff9bcee77f0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 14,
+      "hasStructuralAnalysis": false
+    },
+    "examples/chatbot/web/package.json": {
+      "filePath": "examples/chatbot/web/package.json",
+      "contentHash": "741e7506dc06c553f632ad0894434a7ca5278f04d1df6c468cf79a90eb6a0583",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 25,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/web/src/main.tsx": {
+      "filePath": "examples/chatbot/web/src/main.tsx",
+      "contentHash": "a24acfe8f01f554f4e26f1fd68d32a08ada740ed92b798f4e1a7bdbe3f64ddb9",
+      "functions": [
+        {
+          "name": "App",
+          "params": [],
+          "exported": false,
+          "lineCount": 110
+        },
+        {
+          "name": "EmptyState",
+          "params": [],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "MessageBubble",
+          "params": [
+            "{ message }"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "MessagePart",
+          "params": [
+            "{ part }"
+          ],
+          "exported": false,
+          "lineCount": 36
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@ai-sdk/react",
+          "specifiers": [
+            "useChat"
+          ]
+        },
+        {
+          "source": "ai",
+          "specifiers": [
+            "DefaultChatTransport",
+            "UIMessage"
+          ]
+        },
+        {
+          "source": "react",
+          "specifiers": [
+            "useState"
+          ]
+        },
+        {
+          "source": "react-dom/client",
+          "specifiers": [
+            "createRoot"
+          ]
+        },
+        {
+          "source": "./style.css",
+          "specifiers": []
+        }
+      ],
+      "exports": [],
+      "totalLines": 192,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/web/src/style.css": {
+      "filePath": "examples/chatbot/web/src/style.css",
+      "contentHash": "7ea4212d262a143e408ddfe88db02fb88c74b20d35719a5187acde67ec1f2ecd",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 346,
+      "hasStructuralAnalysis": false
+    },
+    "examples/chatbot/web/tsconfig.json": {
+      "filePath": "examples/chatbot/web/tsconfig.json",
+      "contentHash": "686cc884f4c8cc48dab8fb848cd50ed0254904333c277af70d2f155948d4f6ea",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 25,
+      "hasStructuralAnalysis": true
+    },
+    "examples/chatbot/web/vite.config.ts": {
+      "filePath": "examples/chatbot/web/vite.config.ts",
+      "contentHash": "f4cab09cd85b2c12aaa721d3d70a0f170c6d043bf56a061191b24ec34200ba1c",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "@vitejs/plugin-react",
+          "specifiers": [
+            "react"
+          ]
+        },
+        {
+          "source": "vite",
+          "specifiers": [
+            "defineConfig"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 13,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/.env.example": {
+      "filePath": "examples/standalone/.env.example",
+      "contentHash": "5694c3dd091a8dbc669a95738863f4e1be67c2a3b7340a1ad8d20528670e2cbf",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 4,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/Cargo.toml": {
+      "filePath": "examples/standalone/Cargo.toml",
+      "contentHash": "9c6c3fec78e3722715b62e0a684bc499535463c94db5ba69e2f65e5d2acdd0c8",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 55,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/Justfile": {
+      "filePath": "examples/standalone/Justfile",
+      "contentHash": "37c317c59307acb864079e66c3f2850bc01381b4bb1eef068f997c2d076a1e1e",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 58,
+      "hasStructuralAnalysis": false
+    },
+    "examples/standalone/README.md": {
+      "filePath": "examples/standalone/README.md",
+      "contentHash": "19e164c89935221a13596c14d155e87a9396ab434a27bbc6b094181a3a1bf2a4",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 37,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/anthropic/generate.rs": {
+      "filePath": "examples/standalone/src/anthropic/generate.rs",
+      "contentHash": "fa39cf1b6d13509147162443c375508d8c946f7fabbc146037eff2249870f81a",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 21
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "core::request::TextRequest",
+            "runtime::generate::generate_text"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 31,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/anthropic/stream.rs": {
+      "filePath": "examples/standalone/src/anthropic/stream.rs",
+      "contentHash": "3b265a30388b74ddf845cd0737467618db3db5288407948559bb2021e9a50b6e",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 31
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "runtime::stream::stream_text"
+          ]
+        },
+        {
+          "source": "futures_util",
+          "specifiers": [
+            "StreamExt"
+          ]
+        },
+        {
+          "source": "std::io",
+          "specifiers": [
+            "Write"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 43,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/anthropic/tool_use.rs": {
+      "filePath": "examples/standalone/src/anthropic/tool_use.rs",
+      "contentHash": "3b994ead74221535716ee0edae97268819df142027126553d3619a40b606600a",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "returnType": "Result<(), Box<dyn std::error::Error>>",
+          "exported": false,
+          "lineCount": 38
+        },
+        {
+          "name": "weather_tool",
+          "params": [],
+          "returnType": "ToolDefinition",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "execute_tool",
+          "params": [
+            "call"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "fake_weather",
+          "params": [
+            "location"
+          ],
+          "returnType": "Value",
+          "exported": false,
+          "lineCount": 22
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "runtime::turn::ContinuationBuilder"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "json",
+            "Value"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 110,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/gemini/generate.rs": {
+      "filePath": "examples/standalone/src/gemini/generate.rs",
+      "contentHash": "8689486500ebc57e8d297427360095e27389305e6419c6c3551d144dad99f008",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 21
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "core::request::TextRequest",
+            "runtime::generate::generate_text"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 31,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/gemini/stream.rs": {
+      "filePath": "examples/standalone/src/gemini/stream.rs",
+      "contentHash": "979578ba89585243600e5b6ad86c5d24524901d066a1a096c56a3f1eda79ee8f",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 37
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "runtime::stream::stream_text"
+          ]
+        },
+        {
+          "source": "futures_util",
+          "specifiers": [
+            "StreamExt"
+          ]
+        },
+        {
+          "source": "std::io",
+          "specifiers": [
+            "Write"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 49,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/gemini/tool_use.rs": {
+      "filePath": "examples/standalone/src/gemini/tool_use.rs",
+      "contentHash": "8c782f990f745964ce16cf370c9ee7b1996a644b5649f19d72cf985f82d975c5",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "returnType": "Result<(), Box<dyn std::error::Error>>",
+          "exported": false,
+          "lineCount": 38
+        },
+        {
+          "name": "weather_tool",
+          "params": [],
+          "returnType": "ToolDefinition",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "execute_tool",
+          "params": [
+            "call"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "fake_weather",
+          "params": [
+            "location"
+          ],
+          "returnType": "Value",
+          "exported": false,
+          "lineCount": 22
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "runtime::turn::ContinuationBuilder"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value",
+            "json"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 110,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/openai/event_inspection.rs": {
+      "filePath": "examples/standalone/src/openai/event_inspection.rs",
+      "contentHash": "b043856e7447b35f2663897ee71d466f106c41edb09eacc19c186dfe7c1813ec",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "returnType": "Result<(), Box<dyn std::error::Error>>",
+          "exported": false,
+          "lineCount": 55
+        },
+        {
+          "name": "weather_tool",
+          "params": [],
+          "returnType": "ToolDefinition",
+          "exported": false,
+          "lineCount": 17
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "providers::openai::model::OpenAiChatModel",
+            "runtime::stream::stream_text"
+          ]
+        },
+        {
+          "source": "futures_util",
+          "specifiers": [
+            "StreamExt"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "json"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 91,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/openai/generate.rs": {
+      "filePath": "examples/standalone/src/openai/generate.rs",
+      "contentHash": "9de4e6416601657ecf16e1fdb09bdc9b95fcc35b17bbd18c310ad2ffa0bbfdd8",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 20
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "core::request::TextRequest",
+            "providers::openai::model::OpenAiChatModel",
+            "runtime::generate::generate_text"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 30,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/openai/stream.rs": {
+      "filePath": "examples/standalone/src/openai/stream.rs",
+      "contentHash": "bb650508d66d2e953569560d0d82cb282194e3fd0d992085516636207be4d568",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "exported": false,
+          "lineCount": 30
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "providers::openai::model::OpenAiChatModel",
+            "runtime::stream::stream_text"
+          ]
+        },
+        {
+          "source": "futures_util",
+          "specifiers": [
+            "StreamExt"
+          ]
+        },
+        {
+          "source": "std::io",
+          "specifiers": [
+            "Write"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 42,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/openai/tool_stream.rs": {
+      "filePath": "examples/standalone/src/openai/tool_stream.rs",
+      "contentHash": "5f121f60add4b2a0d780ed49b06944c0f1915367d2fb469bba46d48b4114498d",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "returnType": "Result<(), Box<dyn std::error::Error>>",
+          "exported": false,
+          "lineCount": 40
+        },
+        {
+          "name": "stream_one_turn",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<StreamedTurn, Box<dyn std::error::Error>>",
+          "exported": false,
+          "lineCount": 92
+        },
+        {
+          "name": "weather_tool",
+          "params": [],
+          "returnType": "ToolDefinition",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "execute_tool",
+          "params": [
+            "call"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "fake_weather",
+          "params": [
+            "location"
+          ],
+          "returnType": "Value",
+          "exported": false,
+          "lineCount": 16
+        },
+        {
+          "name": "print_finish",
+          "params": [
+            "reason",
+            "usage",
+            "response"
+          ],
+          "exported": false,
+          "lineCount": 11
+        },
+        {
+          "name": "_assistant_message",
+          "params": [
+            "parts"
+          ],
+          "returnType": "Message",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "StreamedTurn",
+          "methods": [],
+          "properties": [
+            "assistant_parts",
+            "tool_calls",
+            "finish_reason",
+            "usage",
+            "response"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "ToolBuffer",
+          "methods": [],
+          "properties": [
+            "id",
+            "name",
+            "input"
+          ],
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "providers::openai::model::OpenAiChatModel"
+          ]
+        },
+        {
+          "source": "futures_util",
+          "specifiers": [
+            "StreamExt"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "json",
+            "Value"
+          ]
+        },
+        {
+          "source": "std",
+          "specifiers": [
+            "collections::BTreeMap",
+            "io::Write"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 235,
+      "hasStructuralAnalysis": true
+    },
+    "examples/standalone/src/openai/tool_use.rs": {
+      "filePath": "examples/standalone/src/openai/tool_use.rs",
+      "contentHash": "9769378a819d462e0fd9e8c04d32ffd813523f8019856988f594865f0d9cefcf",
+      "functions": [
+        {
+          "name": "main",
+          "params": [],
+          "returnType": "Result<(), Box<dyn std::error::Error>>",
+          "exported": false,
+          "lineCount": 37
+        },
+        {
+          "name": "weather_tool",
+          "params": [],
+          "returnType": "ToolDefinition",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "execute_tool",
+          "params": [
+            "call"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "fake_weather",
+          "params": [
+            "location"
+          ],
+          "returnType": "Value",
+          "exported": false,
+          "lineCount": 22
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "another_ai_sdk",
+          "specifiers": [
+            "providers::openai::model::OpenAiChatModel",
+            "runtime::turn::ContinuationBuilder"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "json",
+            "Value"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 109,
+      "hasStructuralAnalysis": true
+    },
+    "Justfile": {
+      "filePath": "Justfile",
+      "contentHash": "ceefe19d92256878484cba396caf7e9ef08eacbb5cd1ef292d85e72691460a6a",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 32,
+      "hasStructuralAnalysis": false
+    },
+    "README.md": {
+      "filePath": "README.md",
+      "contentHash": "a8b9bbaf7c28c4561b98d57e26f44197402bbcd7990b7ed6ef7f80ed8ef49a7f",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 287,
+      "hasStructuralAnalysis": true
+    },
+    "scripts/publish-crate.sh": {
+      "filePath": "scripts/publish-crate.sh",
+      "contentHash": "48aafd54746572409ac146da1c1d5296390de801f96d2f71f06b7d85344cc1ae",
+      "functions": [
+        {
+          "name": "usage",
+          "params": [],
+          "exported": false,
+          "lineCount": 18
+        },
+        {
+          "name": "require_command",
+          "params": [],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "require_manifest_field",
+          "params": [],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "package_value",
+          "params": [],
+          "exported": false,
+          "lineCount": 4
+        }
+      ],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 183,
+      "hasStructuralAnalysis": true
+    },
+    "src/core/error.rs": {
+      "filePath": "src/core/error.rs",
+      "contentHash": "658fd38d2b4b75b0402359b2744a0781763173410b04f98b7da65cc2232d7d13",
+      "functions": [],
+      "classes": [
+        {
+          "name": "SdkError",
+          "methods": [],
+          "properties": [
+            "Http",
+            "Api",
+            "Serialization",
+            "Unknown"
+          ],
+          "exported": true,
+          "lineCount": 13
+        }
+      ],
+      "imports": [
+        {
+          "source": "thiserror",
+          "specifiers": [
+            "Error"
+          ]
+        }
+      ],
+      "exports": [
+        "SdkError"
+      ],
+      "totalLines": 17,
+      "hasStructuralAnalysis": true
+    },
+    "src/core/message.rs": {
+      "filePath": "src/core/message.rs",
+      "contentHash": "4b63a71282f30c661254d87f8103db4e2928180cf8966dad73a19b7e6a9da1b5",
+      "functions": [
+        {
+          "name": "new",
+          "params": [
+            "id",
+            "name",
+            "input"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "with_provider_metadata",
+          "params": [
+            "metadata"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "user",
+          "params": [
+            "text"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "assistant",
+          "params": [
+            "text"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "system",
+          "params": [
+            "text"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "assistant_parts",
+          "params": [
+            "parts"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "tool_result",
+          "params": [
+            "tool_call_id",
+            "content"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "effective_parts",
+          "params": [],
+          "returnType": "Vec<MessagePart>",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "is_text_only",
+          "params": [],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "Role",
+          "methods": [],
+          "properties": [
+            "System",
+            "User",
+            "Assistant",
+            "Tool"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "MessagePart",
+          "methods": [],
+          "properties": [
+            "Text",
+            "ToolCall",
+            "ToolResult"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "ToolCall",
+          "methods": [
+            "new",
+            "with_provider_metadata"
+          ],
+          "properties": [
+            "id",
+            "name",
+            "input",
+            "provider_metadata"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "ToolResult",
+          "methods": [],
+          "properties": [
+            "tool_call_id",
+            "content"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "Message",
+          "methods": [
+            "user",
+            "assistant",
+            "system",
+            "assistant_parts",
+            "tool_result",
+            "effective_parts",
+            "is_text_only"
+          ],
+          "properties": [
+            "role",
+            "content",
+            "parts"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value"
+          ]
+        }
+      ],
+      "exports": [
+        "Role",
+        "MessagePart",
+        "ToolCall",
+        "new",
+        "with_provider_metadata",
+        "ToolResult",
+        "Message",
+        "user",
+        "assistant",
+        "system",
+        "assistant_parts",
+        "tool_result",
+        "effective_parts",
+        "is_text_only"
+      ],
+      "totalLines": 125,
+      "hasStructuralAnalysis": true
+    },
+    "src/core/mod.rs": {
+      "filePath": "src/core/mod.rs",
+      "contentHash": "daf7797d6f8afebbe99b87e2da142b0a9d569dc6f240938507d5e59ea89db5a0",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "src/core/model.rs": {
+      "filePath": "src/core/model.rs",
+      "contentHash": "8503a735a4fb7c3331784f86c38c4b91789ebc6ac89b9a5f6ffa8299e53b1f1f",
+      "functions": [],
+      "classes": [
+        {
+          "name": "LanguageModel",
+          "methods": [
+            "generate",
+            "stream",
+            "model_id",
+            "provider_name",
+            "generate_chat"
+          ],
+          "properties": [],
+          "exported": true,
+          "lineCount": 19
+        }
+      ],
+      "imports": [
+        {
+          "source": "async_trait",
+          "specifiers": [
+            "async_trait"
+          ]
+        },
+        {
+          "source": "super",
+          "specifiers": [
+            "error::SdkError",
+            "message::MessagePart",
+            "request::TextRequest",
+            "stream::TextEventStream"
+          ]
+        }
+      ],
+      "exports": [
+        "LanguageModel"
+      ],
+      "totalLines": 31,
+      "hasStructuralAnalysis": true
+    },
+    "src/core/request.rs": {
+      "filePath": "src/core/request.rs",
+      "contentHash": "f798760609390ae58c7e3bbc03f3d2f3ff627d4d5b1473a6d3961a784c5f3b88",
+      "functions": [
+        {
+          "name": "new",
+          "params": [
+            "messages"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "builder",
+          "params": [],
+          "returnType": "TextRequestBuilder",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "prompt",
+          "params": [
+            "prompt"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "with_message",
+          "params": [
+            "message"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "with_max_output_tokens",
+          "params": [
+            "tokens"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "with_temperature",
+          "params": [
+            "temperature"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "with_tools",
+          "params": [
+            "tools"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "with_tool_choice",
+          "params": [
+            "choice"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "message",
+          "params": [
+            "message"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "messages",
+          "params": [
+            "messages"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "prompt",
+          "params": [
+            "prompt"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "system",
+          "params": [
+            "text"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "max_output_tokens",
+          "params": [
+            "tokens"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "temperature",
+          "params": [
+            "temperature"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "tools",
+          "params": [
+            "tools"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "tool_choice",
+          "params": [
+            "choice"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "build",
+          "params": [],
+          "returnType": "TextRequest",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "TextRequest",
+          "methods": [
+            "new",
+            "builder",
+            "prompt",
+            "with_message",
+            "with_max_output_tokens",
+            "with_temperature",
+            "with_tools",
+            "with_tool_choice"
+          ],
+          "properties": [
+            "messages",
+            "max_output_tokens",
+            "temperature",
+            "tools",
+            "tool_choice"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "TextRequestBuilder",
+          "methods": [
+            "message",
+            "messages",
+            "prompt",
+            "system",
+            "max_output_tokens",
+            "temperature",
+            "tools",
+            "tool_choice",
+            "build"
+          ],
+          "properties": [
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "super::message",
+          "specifiers": [
+            "Message"
+          ]
+        },
+        {
+          "source": "super::tool",
+          "specifiers": [
+            "ToolChoice",
+            "ToolDefinition"
+          ]
+        }
+      ],
+      "exports": [
+        "TextRequest",
+        "new",
+        "builder",
+        "prompt",
+        "with_message",
+        "with_max_output_tokens",
+        "with_temperature",
+        "with_tools",
+        "with_tool_choice",
+        "TextRequestBuilder",
+        "message",
+        "messages",
+        "prompt",
+        "system",
+        "max_output_tokens",
+        "temperature",
+        "tools",
+        "tool_choice",
+        "build"
+      ],
+      "totalLines": 149,
+      "hasStructuralAnalysis": true
+    },
+    "src/core/result.rs": {
+      "filePath": "src/core/result.rs",
+      "contentHash": "1e7d279771f59810a3c70acd15661d288f792fb38fbdb48f158d56467a7046c0",
+      "functions": [
+        {
+          "name": "text",
+          "params": [],
+          "returnType": "String",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "tool_calls",
+          "params": [],
+          "returnType": "Vec<&ToolCall>",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "has_tool_calls",
+          "params": [],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "TextResult",
+          "methods": [],
+          "properties": [
+            "text",
+            "finish_reason",
+            "usage",
+            "response"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "ChatResult",
+          "methods": [
+            "text",
+            "tool_calls",
+            "has_tool_calls"
+          ],
+          "properties": [
+            "parts",
+            "finish_reason",
+            "usage",
+            "response"
+          ],
+          "exported": true,
+          "lineCount": 7
+        }
+      ],
+      "imports": [
+        {
+          "source": "super::message",
+          "specifiers": [
+            "MessagePart",
+            "ToolCall"
+          ]
+        },
+        {
+          "source": "super::types",
+          "specifiers": [
+            "FinishReason",
+            "ResponseMetadata",
+            "Usage"
+          ]
+        }
+      ],
+      "exports": [
+        "TextResult",
+        "ChatResult",
+        "text",
+        "tool_calls",
+        "has_tool_calls"
+      ],
+      "totalLines": 58,
+      "hasStructuralAnalysis": true
+    },
+    "src/core/stream.rs": {
+      "filePath": "src/core/stream.rs",
+      "contentHash": "6e4b92a734c2d3dd19f453981e8797cc3e14d11a0a89aa6c7837b7ac492dc619",
+      "functions": [],
+      "classes": [
+        {
+          "name": "StreamEvent",
+          "methods": [],
+          "properties": [
+            "TextDelta",
+            "Finished",
+            "ToolCallStarted",
+            "ToolCallDelta",
+            "ToolCallReady"
+          ],
+          "exported": true,
+          "lineCount": 25
+        }
+      ],
+      "imports": [
+        {
+          "source": "futures_core",
+          "specifiers": [
+            "Stream"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value"
+          ]
+        },
+        {
+          "source": "std::pin",
+          "specifiers": [
+            "Pin"
+          ]
+        },
+        {
+          "source": "super",
+          "specifiers": [
+            "error::SdkError"
+          ]
+        }
+      ],
+      "exports": [
+        "StreamEvent"
+      ],
+      "totalLines": 39,
+      "hasStructuralAnalysis": true
+    },
+    "src/core/tool.rs": {
+      "filePath": "src/core/tool.rs",
+      "contentHash": "4902753786914f786bc256e167b70ae892ff0273691980b786b431b91006e394",
+      "functions": [
+        {
+          "name": "new",
+          "params": [
+            "name",
+            "description",
+            "input_schema"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "required",
+          "params": [
+            "name"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "ToolDefinition",
+          "methods": [
+            "new"
+          ],
+          "properties": [
+            "name",
+            "description",
+            "input_schema"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "ToolChoice",
+          "methods": [
+            "required"
+          ],
+          "properties": [
+            "Auto",
+            "None",
+            "Required"
+          ],
+          "exported": true,
+          "lineCount": 8
+        }
+      ],
+      "imports": [
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value"
+          ]
+        }
+      ],
+      "exports": [
+        "ToolDefinition",
+        "new",
+        "ToolChoice",
+        "required"
+      ],
+      "totalLines": 42,
+      "hasStructuralAnalysis": true
+    },
+    "src/core/types.rs": {
+      "filePath": "src/core/types.rs",
+      "contentHash": "99897851a900279e9f0629812eecd4cf0eb0858cfba5fbc497d0d20661a5d418",
+      "functions": [],
+      "classes": [
+        {
+          "name": "Usage",
+          "methods": [],
+          "properties": [
+            "input_tokens",
+            "output_tokens",
+            "total_tokens"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "FinishReason",
+          "methods": [],
+          "properties": [
+            "Stop",
+            "Length",
+            "ContentFilter",
+            "ToolUse",
+            "Other"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "ResponseMetadata",
+          "methods": [],
+          "properties": [
+            "id",
+            "model"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [],
+      "exports": [
+        "Usage",
+        "FinishReason",
+        "ResponseMetadata"
+      ],
+      "totalLines": 22,
+      "hasStructuralAnalysis": true
+    },
+    "src/lib.rs": {
+      "filePath": "src/lib.rs",
+      "contentHash": "973a446e87e3d2e2a71e1a550cc03fc5cd3fae486f8baef8661bc75e18d894c9",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 29,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/anthropic/client.rs": {
+      "filePath": "src/providers/anthropic/client.rs",
+      "contentHash": "46624593ef59c2357766a57e041fa81409e7565f134e1598031795d49318ed08",
+      "functions": [
+        {
+          "name": "new",
+          "params": [
+            "api_key"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "with_base_url",
+          "params": [
+            "api_key",
+            "base_url"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "generate",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<TextResult, SdkError>",
+          "exported": true,
+          "lineCount": 40
+        },
+        {
+          "name": "generate_chat",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 40
+        },
+        {
+          "name": "stream",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<TextEventStream, SdkError>",
+          "exported": true,
+          "lineCount": 70
+        },
+        {
+          "name": "build_finished_event",
+          "params": [],
+          "returnType": "StreamEvent",
+          "exported": false,
+          "lineCount": 32
+        },
+        {
+          "name": "process_event",
+          "params": [
+            "data",
+            "acc"
+          ],
+          "returnType": "Vec<Result<StreamEvent, SdkError>>",
+          "exported": false,
+          "lineCount": 121
+        }
+      ],
+      "classes": [
+        {
+          "name": "AnthropicClient",
+          "methods": [
+            "new",
+            "with_base_url",
+            "generate",
+            "generate_chat",
+            "stream"
+          ],
+          "properties": [
+            "api_key",
+            "base_url",
+            "http"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "StreamAccumulator",
+          "methods": [
+            "build_finished_event"
+          ],
+          "properties": [
+            "id",
+            "model",
+            "input_tokens",
+            "output_tokens",
+            "finish_reason",
+            "finished_emitted",
+            "tool_call_buffers"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "ToolCallBuffer",
+          "methods": [],
+          "properties": [
+            "id",
+            "name",
+            "input"
+          ],
+          "exported": false,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "std::collections",
+          "specifiers": [
+            "HashMap"
+          ]
+        },
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "request::TextRequest"
+          ]
+        },
+        {
+          "source": "super",
+          "specifiers": []
+        },
+        {
+          "source": "crate::core::stream",
+          "specifiers": [
+            "StreamEvent",
+            "TextEventStream"
+          ]
+        },
+        {
+          "source": "crate::core::types",
+          "specifiers": [
+            "FinishReason",
+            "ResponseMetadata"
+          ]
+        },
+        {
+          "source": "eventsource_stream",
+          "specifiers": [
+            "Eventsource"
+          ]
+        },
+        {
+          "source": "futures_util",
+          "specifiers": [
+            "StreamExt"
+          ]
+        }
+      ],
+      "exports": [
+        "AnthropicClient",
+        "new",
+        "with_base_url",
+        "generate",
+        "generate_chat",
+        "stream"
+      ],
+      "totalLines": 930,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/anthropic/error.rs": {
+      "filePath": "src/providers/anthropic/error.rs",
+      "contentHash": "3c311cef13acc7b5ab1cc0cd66a504fbeed892dcd014de07372fd86a946965e3",
+      "functions": [
+        {
+          "name": "from",
+          "params": [
+            "value"
+          ],
+          "returnType": "Self",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "truncate_body",
+          "params": [
+            "body",
+            "max_bytes"
+          ],
+          "returnType": "String",
+          "exported": true,
+          "lineCount": 10
+        }
+      ],
+      "classes": [
+        {
+          "name": "AnthropicClientError",
+          "methods": [],
+          "properties": [
+            "Reqwest",
+            "Serde"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "crate::core::error",
+          "specifiers": [
+            "SdkError"
+          ]
+        }
+      ],
+      "exports": [
+        "AnthropicClientError",
+        "truncate_body"
+      ],
+      "totalLines": 28,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/anthropic/mod.rs": {
+      "filePath": "src/providers/anthropic/mod.rs",
+      "contentHash": "ca780794efb6987d0a13af20574b0230140b0e19c254cd4f84ec983da0d4fd49",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "model",
+          "specifiers": [
+            "AnthropicChatModel"
+          ]
+        },
+        {
+          "source": "models",
+          "specifiers": [
+            "AnthropicModel"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/anthropic/model.rs": {
+      "filePath": "src/providers/anthropic/model.rs",
+      "contentHash": "fb6d75a68c660e5d26fd700ec09728724bea6da610dcf300b48544ba37e24722",
+      "functions": [
+        {
+          "name": "new",
+          "params": [
+            "api_key",
+            "model"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "generate_chat",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "generate",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<TextResult, SdkError>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "generate_chat",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "stream",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<TextEventStream, SdkError>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "model_id",
+          "params": [],
+          "returnType": "&str",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "provider_name",
+          "params": [],
+          "returnType": "&str",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "AnthropicChatModel",
+          "methods": [
+            "new",
+            "generate_chat",
+            "generate",
+            "generate_chat",
+            "stream",
+            "model_id",
+            "provider_name"
+          ],
+          "properties": [
+            "client",
+            "model"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "async_trait",
+          "specifiers": [
+            "async_trait"
+          ]
+        },
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "model::LanguageModel",
+            "request::TextRequest",
+            "stream::TextEventStream"
+          ]
+        },
+        {
+          "source": "super::client",
+          "specifiers": [
+            "AnthropicClient"
+          ]
+        }
+      ],
+      "exports": [
+        "AnthropicChatModel",
+        "new",
+        "generate_chat"
+      ],
+      "totalLines": 54,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/anthropic/models.rs": {
+      "filePath": "src/providers/anthropic/models.rs",
+      "contentHash": "3d5e061b7b4eac09c81bd06853b5aedcf176fd17f232b837cc22af6c9f320936",
+      "functions": [
+        {
+          "name": "as_str",
+          "params": [],
+          "returnType": "&'static str",
+          "exported": true,
+          "lineCount": 14
+        },
+        {
+          "name": "from",
+          "params": [
+            "m"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "fmt",
+          "params": [
+            "f"
+          ],
+          "returnType": "std::fmt::Result",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "AnthropicModel",
+          "methods": [
+            "as_str",
+            "fmt"
+          ],
+          "properties": [
+            "Opus4_6",
+            "Opus4_5",
+            "Opus4_1",
+            "Sonnet4_6",
+            "Sonnet4_5",
+            "Sonnet4_0",
+            "Haiku4_5"
+          ],
+          "exported": true,
+          "lineCount": 12
+        }
+      ],
+      "imports": [],
+      "exports": [
+        "AnthropicModel",
+        "as_str"
+      ],
+      "totalLines": 47,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/anthropic/types.rs": {
+      "filePath": "src/providers/anthropic/types.rs",
+      "contentHash": "d6d6d099c72207a5ee43526a12c958790e3574f0f9c73ad9d278ee6542372b94",
+      "functions": [
+        {
+          "name": "text_request_to_anthropic",
+          "params": [
+            "model",
+            "request",
+            "stream_mode"
+          ],
+          "returnType": "AnthropicRequest",
+          "exported": true,
+          "lineCount": 61
+        },
+        {
+          "name": "system_text",
+          "params": [
+            "msg"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "message_content",
+          "params": [
+            "msg"
+          ],
+          "returnType": "AnthropicMessageContent",
+          "exported": false,
+          "lineCount": 24
+        },
+        {
+          "name": "map_stop_reason",
+          "params": [
+            "stop_reason"
+          ],
+          "returnType": "FinishReason",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "anthropic_response_to_text_result",
+          "params": [
+            "resp"
+          ],
+          "returnType": "Result<TextResult, SdkError>",
+          "exported": true,
+          "lineCount": 38
+        },
+        {
+          "name": "anthropic_response_to_chat_result",
+          "params": [
+            "resp"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 52
+        }
+      ],
+      "classes": [
+        {
+          "name": "AnthropicRequest",
+          "methods": [],
+          "properties": [
+            "model",
+            "messages",
+            "max_tokens",
+            "system",
+            "temperature",
+            "stream",
+            "tools",
+            "tool_choice"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "AnthropicMessage",
+          "methods": [],
+          "properties": [
+            "role",
+            "content"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "AnthropicTool",
+          "methods": [],
+          "properties": [
+            "name",
+            "description",
+            "input_schema"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "AnthropicToolChoice",
+          "methods": [],
+          "properties": [
+            "Auto",
+            "Tool"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "AnthropicMessageContent",
+          "methods": [],
+          "properties": [
+            "Text",
+            "Parts"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "AnthropicContentPart",
+          "methods": [],
+          "properties": [
+            "Text",
+            "ToolUse",
+            "ToolResult"
+          ],
+          "exported": true,
+          "lineCount": 15
+        },
+        {
+          "name": "AnthropicResponse",
+          "methods": [],
+          "properties": [
+            "id",
+            "model",
+            "content",
+            "stop_reason",
+            "usage"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "AnthropicContentBlock",
+          "methods": [],
+          "properties": [
+            "block_type",
+            "text",
+            "id",
+            "name",
+            "input"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "AnthropicUsage",
+          "methods": [],
+          "properties": [
+            "input_tokens",
+            "output_tokens"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "AnthropicErrorResponse",
+          "methods": [],
+          "properties": [
+            "error"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "AnthropicErrorDetail",
+          "methods": [],
+          "properties": [
+            "message",
+            "error_type"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "EventEnvelope",
+          "methods": [],
+          "properties": [
+            "event_type"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "MessageStartEvent",
+          "methods": [],
+          "properties": [
+            "message"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "MessageStartBody",
+          "methods": [],
+          "properties": [
+            "id",
+            "model",
+            "usage"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "ContentBlockDeltaEvent",
+          "methods": [],
+          "properties": [
+            "index",
+            "delta"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "ContentDelta",
+          "methods": [],
+          "properties": [
+            "text",
+            "partial_json"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "ContentBlockStartEvent",
+          "methods": [],
+          "properties": [
+            "index",
+            "content_block"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "ContentBlockStart",
+          "methods": [],
+          "properties": [
+            "Text",
+            "ToolUse"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "ContentBlockStopEvent",
+          "methods": [],
+          "properties": [
+            "index"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "MessageDeltaEvent",
+          "methods": [],
+          "properties": [
+            "delta",
+            "usage"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "MessageDeltaBody",
+          "methods": [],
+          "properties": [
+            "stop_reason"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ErrorEvent",
+          "methods": [],
+          "properties": [
+            "error"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "serde",
+          "specifiers": [
+            "Deserialize",
+            "Serialize"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value"
+          ]
+        },
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "request::TextRequest",
+            "tool::ToolChoice"
+          ]
+        }
+      ],
+      "exports": [
+        "AnthropicRequest",
+        "AnthropicMessage",
+        "AnthropicTool",
+        "AnthropicToolChoice",
+        "AnthropicMessageContent",
+        "AnthropicContentPart",
+        "AnthropicResponse",
+        "AnthropicContentBlock",
+        "AnthropicUsage",
+        "AnthropicErrorResponse",
+        "AnthropicErrorDetail",
+        "EventEnvelope",
+        "MessageStartEvent",
+        "MessageStartBody",
+        "ContentBlockDeltaEvent",
+        "ContentDelta",
+        "ContentBlockStartEvent",
+        "ContentBlockStart",
+        "ContentBlockStopEvent",
+        "MessageDeltaEvent",
+        "MessageDeltaBody",
+        "ErrorEvent",
+        "text_request_to_anthropic",
+        "map_stop_reason",
+        "anthropic_response_to_text_result",
+        "anthropic_response_to_chat_result"
+      ],
+      "totalLines": 528,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/gemini/client.rs": {
+      "filePath": "src/providers/gemini/client.rs",
+      "contentHash": "21256139493d366ddd3726e12584727997067e5413f012d4964f03b613f4bc88",
+      "functions": [
+        {
+          "name": "new",
+          "params": [
+            "api_key"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "with_base_url",
+          "params": [
+            "api_key",
+            "base_url"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "generate",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<TextResult, SdkError>",
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "generate_chat",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 22
+        },
+        {
+          "name": "stream",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<TextEventStream, SdkError>",
+          "exported": true,
+          "lineCount": 65
+        },
+        {
+          "name": "response_bytes",
+          "params": [
+            "response"
+          ],
+          "returnType": "Result<Vec<u8>, SdkError>",
+          "exported": false,
+          "lineCount": 13
+        },
+        {
+          "name": "generate_url",
+          "params": [
+            "model"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "stream_url",
+          "params": [
+            "model"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "gemini_error_from_bytes",
+          "params": [
+            "status",
+            "bytes"
+          ],
+          "returnType": "SdkError",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "finish_if_needed",
+          "params": [],
+          "returnType": "Vec<Result<StreamEvent, SdkError>>",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "process_stream_response",
+          "params": [
+            "resp",
+            "acc"
+          ],
+          "returnType": "Vec<Result<StreamEvent, SdkError>>",
+          "exported": false,
+          "lineCount": 74
+        }
+      ],
+      "classes": [
+        {
+          "name": "GeminiClient",
+          "methods": [
+            "new",
+            "with_base_url",
+            "generate",
+            "generate_chat",
+            "stream",
+            "response_bytes",
+            "generate_url",
+            "stream_url"
+          ],
+          "properties": [
+            "api_key",
+            "base_url",
+            "http"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "StreamAccumulator",
+          "methods": [
+            "finish_if_needed"
+          ],
+          "properties": [
+            "id",
+            "model",
+            "usage",
+            "finish_reason",
+            "finished_emitted",
+            "next_tool_index"
+          ],
+          "exported": false,
+          "lineCount": 8
+        }
+      ],
+      "imports": [
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "request::TextRequest"
+          ]
+        },
+        {
+          "source": "super",
+          "specifiers": []
+        },
+        {
+          "source": "crate::core::stream",
+          "specifiers": [
+            "StreamEvent",
+            "TextEventStream"
+          ]
+        },
+        {
+          "source": "crate::core::types",
+          "specifiers": [
+            "FinishReason",
+            "ResponseMetadata"
+          ]
+        },
+        {
+          "source": "eventsource_stream",
+          "specifiers": [
+            "Eventsource"
+          ]
+        },
+        {
+          "source": "futures_util",
+          "specifiers": [
+            "StreamExt"
+          ]
+        }
+      ],
+      "exports": [
+        "GeminiClient",
+        "new",
+        "with_base_url",
+        "generate",
+        "generate_chat",
+        "stream"
+      ],
+      "totalLines": 499,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/gemini/error.rs": {
+      "filePath": "src/providers/gemini/error.rs",
+      "contentHash": "61c682cb56973921bd4225ee67fa05fffd0a74fe3a27d4b72893a72e28b673b7",
+      "functions": [
+        {
+          "name": "from",
+          "params": [
+            "value"
+          ],
+          "returnType": "Self",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "truncate_body",
+          "params": [
+            "body",
+            "max_bytes"
+          ],
+          "returnType": "String",
+          "exported": true,
+          "lineCount": 10
+        }
+      ],
+      "classes": [
+        {
+          "name": "GeminiClientError",
+          "methods": [],
+          "properties": [
+            "Reqwest",
+            "Serde"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "crate::core::error",
+          "specifiers": [
+            "SdkError"
+          ]
+        }
+      ],
+      "exports": [
+        "GeminiClientError",
+        "truncate_body"
+      ],
+      "totalLines": 28,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/gemini/mod.rs": {
+      "filePath": "src/providers/gemini/mod.rs",
+      "contentHash": "f801de2e596a40b00d6d282d986ce7ca39390edfd1928fec9b55cb73d8005274",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "model",
+          "specifiers": [
+            "GeminiChatModel"
+          ]
+        },
+        {
+          "source": "models",
+          "specifiers": [
+            "GeminiModel"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/gemini/model.rs": {
+      "filePath": "src/providers/gemini/model.rs",
+      "contentHash": "f2600febbb6874c63d9ae88d26635c58274d62b6e2976f2042b23219cfe7284b",
+      "functions": [
+        {
+          "name": "new",
+          "params": [
+            "api_key",
+            "model"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "generate_chat",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "generate",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<TextResult, SdkError>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "generate_chat",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "stream",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<TextEventStream, SdkError>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "model_id",
+          "params": [],
+          "returnType": "&str",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "provider_name",
+          "params": [],
+          "returnType": "&str",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "GeminiChatModel",
+          "methods": [
+            "new",
+            "generate_chat",
+            "generate",
+            "generate_chat",
+            "stream",
+            "model_id",
+            "provider_name"
+          ],
+          "properties": [
+            "client",
+            "model"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "async_trait",
+          "specifiers": [
+            "async_trait"
+          ]
+        },
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "model::LanguageModel",
+            "request::TextRequest",
+            "stream::TextEventStream"
+          ]
+        },
+        {
+          "source": "super::client",
+          "specifiers": [
+            "GeminiClient"
+          ]
+        }
+      ],
+      "exports": [
+        "GeminiChatModel",
+        "new",
+        "generate_chat"
+      ],
+      "totalLines": 54,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/gemini/models.rs": {
+      "filePath": "src/providers/gemini/models.rs",
+      "contentHash": "c825283b21f07de37cf478d6b227ceecfb08dea0cdc443b8982a13f8b17630e1",
+      "functions": [
+        {
+          "name": "as_str",
+          "params": [],
+          "returnType": "&'static str",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "from",
+          "params": [
+            "m"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "fmt",
+          "params": [
+            "f"
+          ],
+          "returnType": "std::fmt::Result",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "GeminiModel",
+          "methods": [
+            "as_str",
+            "fmt"
+          ],
+          "properties": [
+            "Gemini3_1ProPreview",
+            "Gemini3_1ProPreviewCustomTools",
+            "Gemini3FlashPreview",
+            "Gemini3_1FlashLitePreview",
+            "Gemini2_5Pro",
+            "Gemini2_5Flash",
+            "Gemini2_5FlashLite"
+          ],
+          "exported": true,
+          "lineCount": 11
+        }
+      ],
+      "imports": [],
+      "exports": [
+        "GeminiModel",
+        "as_str"
+      ],
+      "totalLines": 43,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/gemini/types.rs": {
+      "filePath": "src/providers/gemini/types.rs",
+      "contentHash": "6737e9a9894e1f2412f3467774f6e396ec5f3a1f513a6cd8cd89e84bb463b0ee",
+      "functions": [
+        {
+          "name": "text_request_to_gemini",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<GenerateContentRequest, SdkError>",
+          "exported": true,
+          "lineCount": 84
+        },
+        {
+          "name": "gemini_role",
+          "params": [
+            "role"
+          ],
+          "returnType": "&'static str",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "text_parts",
+          "params": [
+            "msg"
+          ],
+          "returnType": "Vec<GeminiPart>",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "message_parts_to_gemini",
+          "params": [
+            "msg",
+            "tool_call_refs"
+          ],
+          "returnType": "Result<Vec<GeminiPart>, SdkError>",
+          "exported": false,
+          "lineCount": 47
+        },
+        {
+          "name": "tool_call_part",
+          "params": [
+            "call"
+          ],
+          "returnType": "GeminiPart",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "tool_result_response_value",
+          "params": [
+            "content"
+          ],
+          "returnType": "Value",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "gemini_function_call_id",
+          "params": [
+            "call"
+          ],
+          "returnType": "String",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "gemini_thought_signature",
+          "params": [
+            "call"
+          ],
+          "returnType": "Option<String>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "gemini_metadata_string",
+          "params": [
+            "call",
+            "key"
+          ],
+          "returnType": "Option<String>",
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "gemini_tool_metadata",
+          "params": [
+            "id",
+            "name",
+            "thought_signature"
+          ],
+          "returnType": "Value",
+          "exported": true,
+          "lineCount": 27
+        },
+        {
+          "name": "gemini_schema",
+          "params": [
+            "schema"
+          ],
+          "returnType": "Value",
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "map_finish_reason",
+          "params": [
+            "finish_reason"
+          ],
+          "returnType": "FinishReason",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "usage_from_metadata",
+          "params": [
+            "usage"
+          ],
+          "returnType": "Option<TokenUsage>",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "response_metadata",
+          "params": [
+            "resp"
+          ],
+          "returnType": "ResponseMetadata",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "gemini_response_to_text_result",
+          "params": [
+            "resp"
+          ],
+          "returnType": "Result<TextResult, SdkError>",
+          "exported": true,
+          "lineCount": 41
+        },
+        {
+          "name": "gemini_response_to_chat_result",
+          "params": [
+            "resp"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 61
+        }
+      ],
+      "classes": [
+        {
+          "name": "ToolCallRef",
+          "methods": [],
+          "properties": [
+            "id",
+            "name"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "GenerateContentRequest",
+          "methods": [],
+          "properties": [
+            "contents",
+            "tools",
+            "tool_config",
+            "generation_config",
+            "system_instruction"
+          ],
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "GeminiSystemInstruction",
+          "methods": [],
+          "properties": [
+            "parts"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "GeminiContent",
+          "methods": [],
+          "properties": [
+            "role",
+            "parts"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "GeminiPart",
+          "methods": [],
+          "properties": [
+            "text",
+            "function_call",
+            "function_response",
+            "thought_signature"
+          ],
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "GeminiFunctionCall",
+          "methods": [],
+          "properties": [
+            "id",
+            "name",
+            "args"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "GeminiFunctionResponse",
+          "methods": [],
+          "properties": [
+            "id",
+            "name",
+            "response"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "GeminiTool",
+          "methods": [],
+          "properties": [
+            "function_declarations"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "GeminiFunctionDeclaration",
+          "methods": [],
+          "properties": [
+            "name",
+            "description",
+            "parameters"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "GeminiToolConfig",
+          "methods": [],
+          "properties": [
+            "function_calling_config"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "GeminiFunctionCallingConfig",
+          "methods": [],
+          "properties": [
+            "mode",
+            "allowed_function_names"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "GeminiGenerationConfig",
+          "methods": [],
+          "properties": [
+            "max_output_tokens",
+            "temperature"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "GenerateContentResponse",
+          "methods": [],
+          "properties": [
+            "candidates",
+            "usage_metadata",
+            "response_id",
+            "model_version",
+            "prompt_feedback"
+          ],
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "GeminiCandidate",
+          "methods": [],
+          "properties": [
+            "content",
+            "finish_reason"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "GeminiResponseContent",
+          "methods": [],
+          "properties": [
+            "parts"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "GeminiResponsePart",
+          "methods": [],
+          "properties": [
+            "text",
+            "function_call",
+            "thought_signature"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "GeminiFunctionCallIn",
+          "methods": [],
+          "properties": [
+            "id",
+            "name",
+            "args"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "GeminiUsageMetadata",
+          "methods": [],
+          "properties": [
+            "prompt_token_count",
+            "candidates_token_count",
+            "total_token_count"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "GeminiPromptFeedback",
+          "methods": [],
+          "properties": [
+            "block_reason"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "GeminiErrorResponse",
+          "methods": [],
+          "properties": [
+            "error"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "GeminiErrorDetail",
+          "methods": [],
+          "properties": [
+            "message"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "std::collections",
+          "specifiers": [
+            "HashMap"
+          ]
+        },
+        {
+          "source": "serde",
+          "specifiers": [
+            "Deserialize",
+            "Serialize"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Map",
+            "Value",
+            "json"
+          ]
+        },
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "request::TextRequest",
+            "tool::ToolChoice"
+          ]
+        }
+      ],
+      "exports": [
+        "GenerateContentRequest",
+        "GeminiSystemInstruction",
+        "GeminiContent",
+        "GeminiPart",
+        "GeminiFunctionCall",
+        "GeminiFunctionResponse",
+        "GeminiTool",
+        "GeminiFunctionDeclaration",
+        "GeminiToolConfig",
+        "GeminiFunctionCallingConfig",
+        "GeminiGenerationConfig",
+        "GenerateContentResponse",
+        "GeminiCandidate",
+        "GeminiResponseContent",
+        "GeminiResponsePart",
+        "GeminiFunctionCallIn",
+        "GeminiUsageMetadata",
+        "GeminiPromptFeedback",
+        "GeminiErrorResponse",
+        "GeminiErrorDetail",
+        "text_request_to_gemini",
+        "gemini_function_call_id",
+        "gemini_tool_metadata",
+        "map_finish_reason",
+        "gemini_response_to_text_result",
+        "gemini_response_to_chat_result"
+      ],
+      "totalLines": 822,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/mod.rs": {
+      "filePath": "src/providers/mod.rs",
+      "contentHash": "c6496d87eab18ccdc4b79ce517f6e0381e40400bd4a53b9237a817eb49dc56b2",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 4,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/openai/client.rs": {
+      "filePath": "src/providers/openai/client.rs",
+      "contentHash": "8bc8637a0c6430a71582b7bf4a5bce741744a3d66e46dc3788ed92e5a25a343f",
+      "functions": [
+        {
+          "name": "new",
+          "params": [
+            "api_key"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "with_base_url",
+          "params": [
+            "api_key",
+            "base_url"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "generate",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<TextResult, SdkError>",
+          "exported": true,
+          "lineCount": 42
+        },
+        {
+          "name": "generate_chat",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 42
+        },
+        {
+          "name": "stream",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<TextEventStream, SdkError>",
+          "exported": true,
+          "lineCount": 81
+        },
+        {
+          "name": "process_chunk",
+          "params": [
+            "chunk",
+            "acc"
+          ],
+          "returnType": "Vec<Result<StreamEvent, SdkError>>",
+          "exported": false,
+          "lineCount": 90
+        },
+        {
+          "name": "process_tool_call_delta",
+          "params": [
+            "delta",
+            "acc",
+            "events"
+          ],
+          "exported": false,
+          "lineCount": 46
+        },
+        {
+          "name": "drain_tool_calls",
+          "params": [
+            "acc"
+          ],
+          "returnType": "Vec<(u32, ToolCallBuffer)>",
+          "exported": false,
+          "lineCount": 9
+        }
+      ],
+      "classes": [
+        {
+          "name": "OpenAiClient",
+          "methods": [
+            "new",
+            "with_base_url",
+            "generate",
+            "generate_chat",
+            "stream"
+          ],
+          "properties": [
+            "api_key",
+            "base_url",
+            "http"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "PendingFinished",
+          "methods": [],
+          "properties": [
+            "finish_reason",
+            "response"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "ToolCallBuffer",
+          "methods": [],
+          "properties": [
+            "id",
+            "name",
+            "arguments",
+            "started_emitted"
+          ],
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "StreamAccumulator",
+          "methods": [],
+          "properties": [
+            "id",
+            "model",
+            "usage",
+            "finish_reason",
+            "finished_emitted",
+            "pending_finished",
+            "tool_call_buffers"
+          ],
+          "exported": false,
+          "lineCount": 22
+        }
+      ],
+      "imports": [
+        {
+          "source": "std::collections",
+          "specifiers": [
+            "HashMap"
+          ]
+        },
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "request::TextRequest"
+          ]
+        },
+        {
+          "source": "super",
+          "specifiers": []
+        },
+        {
+          "source": "crate::core::stream",
+          "specifiers": [
+            "StreamEvent",
+            "TextEventStream"
+          ]
+        },
+        {
+          "source": "crate::core::types",
+          "specifiers": [
+            "FinishReason",
+            "ResponseMetadata"
+          ]
+        },
+        {
+          "source": "eventsource_stream",
+          "specifiers": [
+            "Eventsource"
+          ]
+        },
+        {
+          "source": "futures_util",
+          "specifiers": [
+            "StreamExt"
+          ]
+        }
+      ],
+      "exports": [
+        "OpenAiClient",
+        "new",
+        "with_base_url",
+        "generate",
+        "generate_chat",
+        "stream"
+      ],
+      "totalLines": 1092,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/openai/error.rs": {
+      "filePath": "src/providers/openai/error.rs",
+      "contentHash": "d1800d4358e6c9f454b73ce356cc821f097ea818aa8ddd69495c926f17fcc923",
+      "functions": [
+        {
+          "name": "from",
+          "params": [
+            "value"
+          ],
+          "returnType": "Self",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "truncate_body",
+          "params": [
+            "body",
+            "max_bytes"
+          ],
+          "returnType": "String",
+          "exported": true,
+          "lineCount": 10
+        }
+      ],
+      "classes": [
+        {
+          "name": "OpenAiClientError",
+          "methods": [],
+          "properties": [
+            "Reqwest",
+            "Serde"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "crate::core::error",
+          "specifiers": [
+            "SdkError"
+          ]
+        }
+      ],
+      "exports": [
+        "OpenAiClientError",
+        "truncate_body"
+      ],
+      "totalLines": 28,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/openai/mod.rs": {
+      "filePath": "src/providers/openai/mod.rs",
+      "contentHash": "321777a3cafae121039ae730ba80a5d10e574304bc5a7aa6080e64b59c4a6560",
+      "functions": [],
+      "classes": [],
+      "imports": [
+        {
+          "source": "models",
+          "specifiers": [
+            "OpenAiModel"
+          ]
+        }
+      ],
+      "exports": [],
+      "totalLines": 9,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/openai/model.rs": {
+      "filePath": "src/providers/openai/model.rs",
+      "contentHash": "5cadbbd3a0c4bf17a754ba44b2c9926016196d8e752237d14cf7f129386fdaa8",
+      "functions": [
+        {
+          "name": "new",
+          "params": [
+            "api_key",
+            "model"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "generate_chat",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "generate",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<TextResult, SdkError>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "generate_chat",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "stream",
+          "params": [
+            "request"
+          ],
+          "returnType": "Result<TextEventStream, SdkError>",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "model_id",
+          "params": [],
+          "returnType": "&str",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "provider_name",
+          "params": [],
+          "returnType": "&str",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "OpenAiChatModel",
+          "methods": [
+            "new",
+            "generate_chat",
+            "generate",
+            "generate_chat",
+            "stream",
+            "model_id",
+            "provider_name"
+          ],
+          "properties": [
+            "client",
+            "model"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "async_trait",
+          "specifiers": [
+            "async_trait"
+          ]
+        },
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "model::LanguageModel",
+            "request::TextRequest",
+            "stream::TextEventStream"
+          ]
+        },
+        {
+          "source": "super::client",
+          "specifiers": [
+            "OpenAiClient"
+          ]
+        }
+      ],
+      "exports": [
+        "OpenAiChatModel",
+        "new",
+        "generate_chat"
+      ],
+      "totalLines": 54,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/openai/models.rs": {
+      "filePath": "src/providers/openai/models.rs",
+      "contentHash": "9ebb43c3096afcf3e13cfd218f50009db39f3d806bcba3e7cb63aded3d9a8816",
+      "functions": [
+        {
+          "name": "as_str",
+          "params": [],
+          "returnType": "&'static str",
+          "exported": true,
+          "lineCount": 25
+        },
+        {
+          "name": "from",
+          "params": [
+            "m"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "fmt",
+          "params": [
+            "f"
+          ],
+          "returnType": "std::fmt::Result",
+          "exported": false,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "OpenAiModel",
+          "methods": [
+            "as_str",
+            "fmt"
+          ],
+          "properties": [
+            "Gpt5_4",
+            "Gpt5_4Mini",
+            "Gpt5_4Nano",
+            "Gpt5_4Pro",
+            "Gpt5_2",
+            "Gpt5_2Pro",
+            "Gpt5_1",
+            "Gpt5",
+            "Gpt5Mini",
+            "Gpt5Nano",
+            "Gpt5Pro",
+            "Gpt4_1",
+            "Gpt4_1Mini",
+            "Gpt4_1Nano",
+            "Gpt4o"
+          ],
+          "exported": true,
+          "lineCount": 23
+        }
+      ],
+      "imports": [],
+      "exports": [
+        "OpenAiModel",
+        "as_str"
+      ],
+      "totalLines": 69,
+      "hasStructuralAnalysis": true
+    },
+    "src/providers/openai/types.rs": {
+      "filePath": "src/providers/openai/types.rs",
+      "contentHash": "450e505f33c910b98e094fec1cfdc3236102e6dd7ee35989a84318eab9f5abab",
+      "functions": [
+        {
+          "name": "text_request_to_openai",
+          "params": [
+            "model",
+            "request",
+            "stream_mode"
+          ],
+          "returnType": "ChatCompletionRequest",
+          "exported": true,
+          "lineCount": 59
+        },
+        {
+          "name": "uses_max_completion_tokens",
+          "params": [
+            "model"
+          ],
+          "returnType": "bool",
+          "exported": false,
+          "lineCount": 6
+        },
+        {
+          "name": "message_to_chat_messages",
+          "params": [
+            "msg"
+          ],
+          "returnType": "Vec<ChatMessage>",
+          "exported": false,
+          "lineCount": 93
+        },
+        {
+          "name": "map_finish_reason",
+          "params": [
+            "finish_reason"
+          ],
+          "returnType": "FinishReason",
+          "exported": true,
+          "lineCount": 9
+        },
+        {
+          "name": "chat_response_to_text_result",
+          "params": [
+            "resp"
+          ],
+          "returnType": "Result<TextResult, SdkError>",
+          "exported": true,
+          "lineCount": 32
+        },
+        {
+          "name": "chat_response_to_chat_result",
+          "params": [
+            "resp"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 58
+        }
+      ],
+      "classes": [
+        {
+          "name": "ChatCompletionRequest",
+          "methods": [],
+          "properties": [
+            "model",
+            "messages",
+            "max_tokens",
+            "max_completion_tokens",
+            "temperature",
+            "stream",
+            "stream_options",
+            "tools",
+            "tool_choice"
+          ],
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "StreamOptions",
+          "methods": [],
+          "properties": [
+            "include_usage"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ChatMessage",
+          "methods": [],
+          "properties": [
+            "role",
+            "content",
+            "tool_call_id",
+            "tool_calls"
+          ],
+          "exported": true,
+          "lineCount": 8
+        },
+        {
+          "name": "OaiToolCallOut",
+          "methods": [],
+          "properties": [
+            "id",
+            "call_type",
+            "function"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "OaiFunctionCallOut",
+          "methods": [],
+          "properties": [
+            "name",
+            "arguments"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "OaiTool",
+          "methods": [],
+          "properties": [
+            "tool_type",
+            "function"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "OaiFunctionDef",
+          "methods": [],
+          "properties": [
+            "name",
+            "description",
+            "parameters"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "OaiToolChoice",
+          "methods": [],
+          "properties": [
+            "String",
+            "Function"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "OaiToolChoiceFunction",
+          "methods": [],
+          "properties": [
+            "choice_type",
+            "function"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "OaiToolChoiceName",
+          "methods": [],
+          "properties": [
+            "name"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ChatCompletionResponse",
+          "methods": [],
+          "properties": [
+            "id",
+            "model",
+            "choices",
+            "usage"
+          ],
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "Choice",
+          "methods": [],
+          "properties": [
+            "message",
+            "finish_reason"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "AssistantMessage",
+          "methods": [],
+          "properties": [
+            "content",
+            "tool_calls"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "OaiToolCallIn",
+          "methods": [],
+          "properties": [
+            "id",
+            "call_type",
+            "function"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "OaiFunctionCallIn",
+          "methods": [],
+          "properties": [
+            "name",
+            "arguments"
+          ],
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "UsageBody",
+          "methods": [],
+          "properties": [
+            "prompt_tokens",
+            "completion_tokens",
+            "total_tokens"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "OpenAiErrorBody",
+          "methods": [],
+          "properties": [
+            "error"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "OpenAiErrorDetail",
+          "methods": [],
+          "properties": [
+            "message"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ChatCompletionChunk",
+          "methods": [],
+          "properties": [
+            "id",
+            "model",
+            "choices",
+            "usage"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "ChunkChoice",
+          "methods": [],
+          "properties": [
+            "delta",
+            "finish_reason"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "ChunkDelta",
+          "methods": [],
+          "properties": [
+            "content",
+            "tool_calls"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "OaiChunkToolCallDelta",
+          "methods": [],
+          "properties": [
+            "index",
+            "id",
+            "function"
+          ],
+          "exported": true,
+          "lineCount": 5
+        },
+        {
+          "name": "OaiFunctionDelta",
+          "methods": [],
+          "properties": [
+            "name",
+            "arguments"
+          ],
+          "exported": true,
+          "lineCount": 4
+        }
+      ],
+      "imports": [
+        {
+          "source": "serde",
+          "specifiers": [
+            "Deserialize",
+            "Serialize"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value"
+          ]
+        },
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "request::TextRequest",
+            "tool::ToolChoice"
+          ]
+        }
+      ],
+      "exports": [
+        "ChatCompletionRequest",
+        "StreamOptions",
+        "ChatMessage",
+        "OaiToolCallOut",
+        "OaiFunctionCallOut",
+        "OaiTool",
+        "OaiFunctionDef",
+        "OaiToolChoice",
+        "OaiToolChoiceFunction",
+        "OaiToolChoiceName",
+        "ChatCompletionResponse",
+        "Choice",
+        "AssistantMessage",
+        "OaiToolCallIn",
+        "OaiFunctionCallIn",
+        "UsageBody",
+        "OpenAiErrorBody",
+        "OpenAiErrorDetail",
+        "ChatCompletionChunk",
+        "ChunkChoice",
+        "ChunkDelta",
+        "OaiChunkToolCallDelta",
+        "OaiFunctionDelta",
+        "text_request_to_openai",
+        "map_finish_reason",
+        "chat_response_to_text_result",
+        "chat_response_to_chat_result"
+      ],
+      "totalLines": 759,
+      "hasStructuralAnalysis": true
+    },
+    "src/runtime/generate.rs": {
+      "filePath": "src/runtime/generate.rs",
+      "contentHash": "e8b60b30d2af9d10a23f993e28b0c798621756504c990d3d1b80fe9d0211024e",
+      "functions": [
+        {
+          "name": "generate_text",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<TextResult, SdkError>",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "generate_chat",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<ChatResult, SdkError>",
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "model::LanguageModel",
+            "request::TextRequest"
+          ]
+        }
+      ],
+      "exports": [
+        "generate_text",
+        "generate_chat"
+      ],
+      "totalLines": 21,
+      "hasStructuralAnalysis": true
+    },
+    "src/runtime/message_stream.rs": {
+      "filePath": "src/runtime/message_stream.rs",
+      "contentHash": "f706fdbf0c07e4ff900ea62d6cb345252878573dc8c8b93306357bcc134ad890",
+      "functions": [
+        {
+          "name": "default",
+          "params": [],
+          "returnType": "Self",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "compose_text_request",
+          "params": [
+            "request",
+            "system_prompt",
+            "options",
+            "tools"
+          ],
+          "returnType": "TextRequest",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "stream_text_messages",
+          "params": [
+            "model",
+            "request",
+            "tools",
+            "options"
+          ],
+          "returnType": "impl Stream<Item = MessageStreamChunk> + Send + 'static",
+          "exported": true,
+          "lineCount": 110
+        },
+        {
+          "name": "messages_to_sdk_messages",
+          "params": [
+            "request",
+            "system_prompt"
+          ],
+          "returnType": "Vec<Message>",
+          "exported": true,
+          "lineCount": 30
+        },
+        {
+          "name": "start_message_chunk",
+          "params": [],
+          "returnType": "MessageStreamChunk",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "error_chunks",
+          "params": [
+            "error_text"
+          ],
+          "returnType": "Vec<MessageStreamChunk>",
+          "exported": false,
+          "lineCount": 8
+        },
+        {
+          "name": "chunks_for_sdk_event",
+          "params": [
+            "event",
+            "text_part_id",
+            "text_started"
+          ],
+          "returnType": "Vec<MessageStreamChunk>",
+          "exported": false,
+          "lineCount": 54
+        },
+        {
+          "name": "normalize_tool_call_ids",
+          "params": [
+            "parts",
+            "fallback_tool_ids"
+          ],
+          "returnType": "Vec<MessagePart>",
+          "exported": false,
+          "lineCount": 17
+        },
+        {
+          "name": "tool_calls_from_parts",
+          "params": [
+            "parts"
+          ],
+          "returnType": "Vec<crate::core::message::ToolCall>",
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "sse",
+          "params": [
+            "value"
+          ],
+          "returnType": "MessageStreamChunk",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "done",
+          "params": [],
+          "returnType": "MessageStreamChunk",
+          "exported": false,
+          "lineCount": 3
+        },
+        {
+          "name": "message_id",
+          "params": [],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "tool_call_id",
+          "params": [
+            "id",
+            "index"
+          ],
+          "returnType": "String",
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "finish_reason_to_ai_sdk",
+          "params": [
+            "reason"
+          ],
+          "returnType": "&'static str",
+          "exported": false,
+          "lineCount": 9
+        }
+      ],
+      "classes": [
+        {
+          "name": "MessageStreamRequest",
+          "methods": [],
+          "properties": [
+            "messages"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "MessageStreamMessage",
+          "methods": [],
+          "properties": [
+            "role",
+            "parts"
+          ],
+          "exported": false,
+          "lineCount": 5
+        },
+        {
+          "name": "MessageStreamPart",
+          "methods": [],
+          "properties": [
+            "Text",
+            "Other"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "MessageStreamOptions",
+          "methods": [
+            "default"
+          ],
+          "properties": [
+            "max_model_steps",
+            "max_output_tokens",
+            "temperature"
+          ],
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "imports": [
+        {
+          "source": "std",
+          "specifiers": [
+            "collections::VecDeque",
+            "convert::Infallible"
+          ]
+        },
+        {
+          "source": "async_stream",
+          "specifiers": [
+            "stream"
+          ]
+        },
+        {
+          "source": "bytes",
+          "specifiers": [
+            "Bytes"
+          ]
+        },
+        {
+          "source": "futures_core",
+          "specifiers": [
+            "Stream"
+          ]
+        },
+        {
+          "source": "futures_util",
+          "specifiers": [
+            "StreamExt"
+          ]
+        },
+        {
+          "source": "serde",
+          "specifiers": [
+            "Deserialize"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value",
+            "json"
+          ]
+        },
+        {
+          "source": "crate",
+          "specifiers": []
+        }
+      ],
+      "exports": [
+        "MessageStreamRequest",
+        "MessageStreamOptions",
+        "compose_text_request",
+        "stream_text_messages",
+        "messages_to_sdk_messages"
+      ],
+      "totalLines": 607,
+      "hasStructuralAnalysis": true
+    },
+    "src/runtime/mod.rs": {
+      "filePath": "src/runtime/mod.rs",
+      "contentHash": "f41bd660fce8c1c2f7d469f6f416089a2e6d58d7b5918d488fea2e9f8b7a918b",
+      "functions": [],
+      "classes": [],
+      "imports": [],
+      "exports": [],
+      "totalLines": 7,
+      "hasStructuralAnalysis": true
+    },
+    "src/runtime/stream.rs": {
+      "filePath": "src/runtime/stream.rs",
+      "contentHash": "6130e6ff2ffc8b64adef55b3294b7388311e99d5604c86e3d701934d45aeb6e7",
+      "functions": [
+        {
+          "name": "stream_text",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<TextEventStream, SdkError>",
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "classes": [],
+      "imports": [
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "model::LanguageModel",
+            "request::TextRequest",
+            "stream::TextEventStream"
+          ]
+        }
+      ],
+      "exports": [
+        "stream_text"
+      ],
+      "totalLines": 11,
+      "hasStructuralAnalysis": true
+    },
+    "src/runtime/tools.rs": {
+      "filePath": "src/runtime/tools.rs",
+      "contentHash": "99db30d9cf887e44c73342b7e14dca8c47f5dbd6168a4341c2bd6f92f83151c0",
+      "functions": [
+        {
+          "name": "new",
+          "params": [],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "register",
+          "params": [
+            "definition",
+            "handler"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 16
+        },
+        {
+          "name": "definitions",
+          "params": [],
+          "returnType": "Vec<ToolDefinition>",
+          "exported": true,
+          "lineCount": 6
+        },
+        {
+          "name": "execute",
+          "params": [
+            "call"
+          ],
+          "returnType": "Result<Value, SdkError>",
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "contains",
+          "params": [
+            "name"
+          ],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "classes": [
+        {
+          "name": "RegisteredTool",
+          "methods": [],
+          "properties": [
+            "definition",
+            "handler"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "ToolRegistry",
+          "methods": [
+            "new",
+            "register",
+            "definitions",
+            "execute",
+            "contains"
+          ],
+          "properties": [
+            "tools"
+          ],
+          "exported": true,
+          "lineCount": 3
+        }
+      ],
+      "imports": [
+        {
+          "source": "std",
+          "specifiers": [
+            "collections::BTreeMap",
+            "future::Future",
+            "pin::Pin",
+            "sync::Arc"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value"
+          ]
+        },
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "message::ToolCall",
+            "tool::ToolDefinition"
+          ]
+        }
+      ],
+      "exports": [
+        "ToolRegistry",
+        "new",
+        "register",
+        "definitions",
+        "execute",
+        "contains"
+      ],
+      "totalLines": 103,
+      "hasStructuralAnalysis": true
+    },
+    "src/runtime/turn.rs": {
+      "filePath": "src/runtime/turn.rs",
+      "contentHash": "d7901ae35a8d622bb4b493f9ffdb342e01a7af810f30b7c8a503e550548eff0d",
+      "functions": [
+        {
+          "name": "run_turn",
+          "params": [
+            "model",
+            "request"
+          ],
+          "returnType": "Result<TurnOutcome, SdkError>",
+          "exported": true,
+          "lineCount": 18
+        },
+        {
+          "name": "from_request",
+          "params": [
+            "request"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "with_assistant_turn",
+          "params": [
+            "parts"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 4
+        },
+        {
+          "name": "with_tool_result",
+          "params": [
+            "tool_call_id",
+            "result_content"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 10
+        },
+        {
+          "name": "with_tool_results",
+          "params": [
+            "results"
+          ],
+          "returnType": "Self",
+          "exported": true,
+          "lineCount": 11
+        },
+        {
+          "name": "build",
+          "params": [],
+          "returnType": "TextRequest",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "push_event",
+          "params": [
+            "event"
+          ],
+          "exported": true,
+          "lineCount": 31
+        },
+        {
+          "name": "into_accumulated",
+          "params": [],
+          "returnType": "AccumulatedTurn",
+          "exported": true,
+          "lineCount": 39
+        },
+        {
+          "name": "into_outcome",
+          "params": [],
+          "returnType": "Result<TurnOutcome, SdkError>",
+          "exported": true,
+          "lineCount": 21
+        },
+        {
+          "name": "push_text",
+          "params": [
+            "text"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "start_tool_call",
+          "params": [
+            "index",
+            "id",
+            "name"
+          ],
+          "exported": false,
+          "lineCount": 12
+        },
+        {
+          "name": "append_tool_delta",
+          "params": [
+            "index",
+            "id",
+            "delta"
+          ],
+          "exported": false,
+          "lineCount": 14
+        },
+        {
+          "name": "ready_tool_call",
+          "params": [
+            "index",
+            "id",
+            "name",
+            "input",
+            "provider_metadata"
+          ],
+          "exported": false,
+          "lineCount": 21
+        },
+        {
+          "name": "ensure_tool_slot",
+          "params": [
+            "index"
+          ],
+          "exported": false,
+          "lineCount": 9
+        },
+        {
+          "name": "set_finish",
+          "params": [
+            "finish_reason",
+            "usage",
+            "response"
+          ],
+          "exported": false,
+          "lineCount": 10
+        },
+        {
+          "name": "text",
+          "params": [],
+          "returnType": "String",
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "tool_calls",
+          "params": [],
+          "returnType": "Vec<&ToolCall>",
+          "exported": true,
+          "lineCount": 12
+        },
+        {
+          "name": "tool_calls_cloned",
+          "params": [],
+          "returnType": "Vec<ToolCall>",
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "has_tool_calls",
+          "params": [],
+          "returnType": "bool",
+          "exported": true,
+          "lineCount": 5
+        }
+      ],
+      "classes": [
+        {
+          "name": "TurnOutcome",
+          "methods": [],
+          "properties": [
+            "Completed",
+            "ToolsRequired"
+          ],
+          "exported": true,
+          "lineCount": 13
+        },
+        {
+          "name": "ContinuationBuilder",
+          "methods": [
+            "from_request",
+            "with_assistant_turn",
+            "with_tool_result",
+            "with_tool_results",
+            "build"
+          ],
+          "properties": [
+            "request"
+          ],
+          "exported": true,
+          "lineCount": 3
+        },
+        {
+          "name": "ToolCallBuffer",
+          "methods": [],
+          "properties": [
+            "id",
+            "name",
+            "arguments",
+            "input",
+            "provider_metadata"
+          ],
+          "exported": false,
+          "lineCount": 7
+        },
+        {
+          "name": "TurnAccumulator",
+          "methods": [
+            "push_event",
+            "into_accumulated",
+            "into_outcome",
+            "push_text",
+            "start_tool_call",
+            "append_tool_delta",
+            "ready_tool_call",
+            "ensure_tool_slot",
+            "set_finish"
+          ],
+          "properties": [
+            "parts_order",
+            "tool_buffers",
+            "finish_reason",
+            "usage",
+            "response"
+          ],
+          "exported": true,
+          "lineCount": 7
+        },
+        {
+          "name": "PartSlot",
+          "methods": [],
+          "properties": [
+            "Text",
+            "ToolIndex"
+          ],
+          "exported": false,
+          "lineCount": 4
+        },
+        {
+          "name": "AccumulatedTurn",
+          "methods": [
+            "text",
+            "tool_calls",
+            "tool_calls_cloned",
+            "has_tool_calls"
+          ],
+          "properties": [
+            "parts",
+            "finish_reason",
+            "usage",
+            "response"
+          ],
+          "exported": true,
+          "lineCount": 6
+        }
+      ],
+      "imports": [
+        {
+          "source": "std::collections",
+          "specifiers": [
+            "HashMap"
+          ]
+        },
+        {
+          "source": "futures_util",
+          "specifiers": [
+            "StreamExt"
+          ]
+        },
+        {
+          "source": "serde_json",
+          "specifiers": [
+            "Value"
+          ]
+        },
+        {
+          "source": "crate::core",
+          "specifiers": [
+            "error::SdkError",
+            "model::LanguageModel",
+            "request::TextRequest",
+            "result::ChatResult",
+            "stream::StreamEvent"
+          ]
+        }
+      ],
+      "exports": [
+        "TurnOutcome",
+        "run_turn",
+        "ContinuationBuilder",
+        "from_request",
+        "with_assistant_turn",
+        "with_tool_result",
+        "with_tool_results",
+        "build",
+        "TurnAccumulator",
+        "push_event",
+        "into_accumulated",
+        "into_outcome",
+        "AccumulatedTurn",
+        "text",
+        "tool_calls",
+        "tool_calls_cloned",
+        "has_tool_calls"
+      ],
+      "totalLines": 708,
+      "hasStructuralAnalysis": true
+    }
+  }
+}

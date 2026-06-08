@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use another_ai_sdk::{
     core::{error::SdkError, request::TextRequest, tool::ToolDefinition},
-    providers::openai::model::OpenAiChatModel,
+    providers::openai::{OpenAiChatModel, OpenAiModel},
     runtime::{
         message_stream::{
             MESSAGE_STREAM_CACHE_CONTROL, MESSAGE_STREAM_CONTENT_TYPE,
@@ -59,9 +59,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn chat_handler(
     State(state): State<AppState>,
     Json(input): Json<MessageStreamRequest>,
-) -> impl IntoResponse {
+) -> Response {
     let options = MessageStreamOptions::default();
-    let request = build_text_request(input, &state.tools, options);
+    let request = match build_text_request(input, &state.tools, options) {
+        Ok(request) => request,
+        Err(error) => return (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    };
     let stream = stream_text_messages(state.model, request, state.tools, options);
 
     sse_response(stream)
@@ -71,16 +74,16 @@ fn build_text_request(
     input: MessageStreamRequest,
     tools: &ToolRegistry,
     options: MessageStreamOptions,
-) -> TextRequest {
-    let messages = messages_to_sdk_messages(input, SYSTEM_PROMPT);
+) -> Result<TextRequest, another_ai_sdk::runtime::message_stream::MessageStreamInputError> {
+    let messages = messages_to_sdk_messages(input, SYSTEM_PROMPT)?;
     let tool_definitions = tools.definitions();
 
-    TextRequest::builder()
+    Ok(TextRequest::builder()
         .messages(messages)
         .max_output_tokens(options.max_output_tokens)
         .temperature(options.temperature)
         .tools(tool_definitions)
-        .build()
+        .build())
 }
 
 fn sse_response<S>(stream: S) -> Response
@@ -182,7 +185,7 @@ fn openai_api_key() -> String {
 }
 
 fn openai_model() -> String {
-    std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5.4-nano".to_string())
+    std::env::var("OPENAI_MODEL").unwrap_or_else(|_| OpenAiModel::Gpt5_4Nano.to_string())
 }
 
 fn port() -> u16 {

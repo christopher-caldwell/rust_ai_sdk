@@ -149,10 +149,34 @@ if [[ -z "$name" || -z "$version" ]]; then
   exit 1
 fi
 
-cargo_dirty_args=()
+cargo_allow_dirty=false
 if [[ "$allow_dirty" == true || "$mode" == "prepare" ]]; then
-  cargo_dirty_args=(--allow-dirty)
+  cargo_allow_dirty=true
 fi
+
+cargo_package_list() {
+  if [[ "$cargo_allow_dirty" == true ]]; then
+    cargo package --list --allow-dirty
+  else
+    cargo package --list
+  fi
+}
+
+cargo_publish_dry_run() {
+  if [[ "$cargo_allow_dirty" == true ]]; then
+    cargo publish --dry-run --allow-dirty
+  else
+    cargo publish --dry-run
+  fi
+}
+
+cargo_publish_release() {
+  if [[ "$cargo_allow_dirty" == true ]]; then
+    cargo publish --allow-dirty
+  else
+    cargo publish
+  fi
+}
 
 echo "==> Package: $name $version"
 
@@ -192,10 +216,10 @@ echo "==> Building public rustdoc"
 cargo doc --all-features --no-deps
 
 echo "==> Listing packaged files"
-cargo package --list "${cargo_dirty_args[@]}"
+cargo_package_list
 
 echo "==> Running cargo publish --dry-run"
-cargo publish --dry-run "${cargo_dirty_args[@]}"
+cargo_publish_dry_run
 
 if [[ "$mode" != "publish" ]]; then
   if [[ "$mode" == "prepare" ]]; then
@@ -253,7 +277,7 @@ if [[ "$confirmation" != "$name $version" ]]; then
 fi
 
 echo "==> Publishing"
-cargo publish "${cargo_dirty_args[@]}"
+cargo_publish_release
 
 cat <<MSG
 

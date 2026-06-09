@@ -26,6 +26,7 @@ Local release flow:
   2. Review the generated Cargo.toml, Cargo.lock, and CHANGELOG.md changes.
   3. Commit those release changes.
   4. Run: scripts/publish-crate.sh --publish
+  5. The script publishes the crate, tags the release commit, and pushes the tag.
 USAGE
 }
 
@@ -117,6 +118,26 @@ refresh_example_lockfiles() {
     echo "==> Updating lockfile for $example_manifest"
     cargo update --manifest-path "$example_manifest" -p "$name"
   done
+}
+
+ensure_tag_is_available() {
+  if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+    echo "Local git tag already exists: $tag" >&2
+    exit 1
+  fi
+
+  if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+    echo "Remote git tag already exists on origin: $tag" >&2
+    exit 1
+  fi
+}
+
+tag_and_push_release() {
+  echo "==> Creating git tag $tag"
+  git tag "$tag"
+
+  echo "==> Pushing git tag $tag"
+  git push origin "$tag"
 }
 
 require_command cargo
@@ -270,6 +291,8 @@ MSG
   exit 0
 fi
 
+ensure_tag_is_available
+
 cat <<MSG
 
 About to publish $name $version to crates.io.
@@ -292,11 +315,10 @@ fi
 echo "==> Publishing"
 cargo_publish_release
 
+tag_and_push_release
+
 cat <<MSG
 
 Published $name $version.
-
-Recommended next step:
-  git tag $tag
-  git push origin $tag
+Tagged and pushed $tag.
 MSG

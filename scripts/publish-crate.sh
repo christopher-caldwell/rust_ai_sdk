@@ -59,6 +59,11 @@ repo_root="$(cd "$script_dir/.." && pwd)"
 cd "$repo_root"
 
 manifest="Cargo.toml"
+example_manifests=(
+  "examples/standalone/Cargo.toml"
+  "examples/chatbot/server/Cargo.toml"
+  "examples/chatbot/server-explicit/Cargo.toml"
+)
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -92,6 +97,15 @@ require_manifest_field() {
 package_value() {
   local field="$1"
   sed -nE "s/^[[:space:]]*$field[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$manifest" | head -n 1
+}
+
+refresh_example_lockfiles() {
+  local example_manifest
+
+  for example_manifest in "${example_manifests[@]}"; do
+    echo "==> Updating lockfile for $example_manifest"
+    cargo update --manifest-path "$example_manifest" -p "$name"
+  done
 }
 
 require_command cargo
@@ -135,6 +149,11 @@ if [[ -z "$name" || -z "$version" ]]; then
   exit 1
 fi
 
+cargo_dirty_args=()
+if [[ "$allow_dirty" == true || "$mode" == "prepare" ]]; then
+  cargo_dirty_args=(--allow-dirty)
+fi
+
 echo "==> Package: $name $version"
 
 if [[ "$mode" == "prepare" ]]; then
@@ -144,6 +163,8 @@ if [[ "$mode" == "prepare" ]]; then
   version="$(package_value version)"
   tag="v$version"
   echo "==> Prepared package version: $version"
+
+  refresh_example_lockfiles
 fi
 
 echo "==> Verifying cargo metadata"
@@ -171,10 +192,10 @@ echo "==> Building public rustdoc"
 cargo doc --all-features --no-deps
 
 echo "==> Listing packaged files"
-cargo package --list
+cargo package --list "${cargo_dirty_args[@]}"
 
 echo "==> Running cargo publish --dry-run"
-cargo publish --dry-run
+cargo publish --dry-run "${cargo_dirty_args[@]}"
 
 if [[ "$mode" != "publish" ]]; then
   if [[ "$mode" == "prepare" ]]; then
@@ -183,8 +204,8 @@ if [[ "$mode" != "publish" ]]; then
 Release preparation passed. Nothing was uploaded.
 
 Review the generated release changes, then commit them:
-  git diff -- Cargo.toml Cargo.lock CHANGELOG.md
-  git add Cargo.toml Cargo.lock CHANGELOG.md
+  git diff -- Cargo.toml Cargo.lock CHANGELOG.md examples
+  git add Cargo.toml Cargo.lock CHANGELOG.md examples
   git commit -m "chore: prepare $name $version release"
 
 When you are ready to publish the committed release:
@@ -232,7 +253,7 @@ if [[ "$confirmation" != "$name $version" ]]; then
 fi
 
 echo "==> Publishing"
-cargo publish
+cargo publish "${cargo_dirty_args[@]}"
 
 cat <<MSG
 

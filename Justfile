@@ -62,4 +62,4 @@ publish-dry:
 
 # Publish the package from the committed release changes
 publish:
-    ./scripts/publish-crate.sh --publish
+    ./scripts/publish-crate.sh --publish --yes

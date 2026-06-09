@@ -11,6 +11,7 @@ Usage:
 Options:
   --publish      Actually upload to crates.io. Default prepares a dry run only.
   --check-only   Skip release-plz update and only run validation/dry-run publish.
+  --yes          Skip the publish confirmation prompt. Only valid with --publish.
   --allow-dirty  Allow publishing checks from a dirty git worktree.
   -h, --help     Show this help.
 
@@ -30,6 +31,7 @@ USAGE
 
 mode="prepare"
 allow_dirty=false
+skip_publish_confirmation=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -38,6 +40,9 @@ for arg in "$@"; do
       ;;
     --check-only)
       mode="check-only"
+      ;;
+    --yes)
+      skip_publish_confirmation=true
       ;;
     --allow-dirty)
       allow_dirty=true
@@ -53,6 +58,12 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+if [[ "$skip_publish_confirmation" == true && "$mode" != "publish" ]]; then
+  echo "--yes is only valid with --publish." >&2
+  usage >&2
+  exit 2
+fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
@@ -270,10 +281,12 @@ Publishing is permanent:
 
 MSG
 
-read -r -p "Type '$name $version' to publish: " confirmation
-if [[ "$confirmation" != "$name $version" ]]; then
-  echo "Confirmation did not match. Aborting."
-  exit 1
+if [[ "$skip_publish_confirmation" == false ]]; then
+  read -r -p "Type '$name $version' to publish: " confirmation
+  if [[ "$confirmation" != "$name $version" ]]; then
+    echo "Confirmation did not match. Aborting."
+    exit 1
+  fi
 fi
 
 echo "==> Publishing"

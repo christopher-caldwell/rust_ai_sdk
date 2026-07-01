@@ -1,12 +1,13 @@
 # Explicit Chatbot Server Example
 
-This is the "show the seams" version of the chatbot server. It still uses the
+This is the more explicit version of the chatbot server. It still uses the
 optional `message-stream` add-on for the AI SDK UI-message wire protocol, but
 it builds the provider-neutral `TextRequest` explicitly instead of using
 `compose_text_request(...)`.
 
 Use this example when you want to see exactly where request conversion, model
 options, tool definitions, stream startup, and HTTP response wrapping happen.
+For the full example layout, see [the chatbot guide](../README.md).
 
 ## Run It
 
@@ -14,6 +15,13 @@ This server uses the same Vite frontend as `examples/chatbot/web`, which proxies
 `/api/chat` to `http://127.0.0.1:3001`.
 
 Create `server-explicit/.env` or reuse `server/.env`:
+
+```sh
+cd examples/chatbot/server-explicit
+cp .env.example .env
+```
+
+Fill in:
 
 ```sh
 OPENAI_API_KEY=your-openai-api-key

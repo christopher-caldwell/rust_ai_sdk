@@ -5,10 +5,11 @@ This is a small Axum server that connects the Vite chat UI to the local
 wrapping, and demo tools while the optional `message-stream` SDK feature owns
 the reusable AI SDK UI-message stream protocol work.
 
-For a less black-box version of the same server, see
-`examples/chatbot/server-explicit`. That example uses the same stream protocol
-helpers, but builds the `TextRequest` explicitly instead of calling
-`compose_text_request(...)`.
+For the full example layout, see [the chatbot guide](../README.md). For a more
+explicit version of the same server, see
+[server-explicit](../server-explicit/README.md). That example uses the same
+stream protocol helpers, but builds the `TextRequest` explicitly instead of
+calling `compose_text_request(...)`.
 
 The browser talks in AI SDK UI-message JSON and SSE chunks. The Rust server
 talks to the SDK in provider-neutral `TextRequest`, `ToolDefinition`, and
@@ -17,6 +18,13 @@ talks to the SDK in provider-neutral `TextRequest`, `ToolDefinition`, and
 ## Run It
 
 Create `server/.env`:
+
+```sh
+cd examples/chatbot/server
+cp .env.example .env
+```
+
+Fill in:
 
 ```sh
 OPENAI_API_KEY=your-openai-api-key

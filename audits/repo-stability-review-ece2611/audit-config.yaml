@@ -1,0 +1,33 @@
+audit_target: "/Users/christophercaldwell/Code/projects/rust/rust_ai_sdk at HEAD ece26117a971286911cd7bb6e459b3e19ca9f14a"
+audit_type: "code_review"
+reviewer_count: 5
+reviewer_mode: "identical_reviewers"
+quorum_threshold: 0.60
+include_minority_findings: true
+minority_severity_floor: "high"
+output_directory: "./audits/repo-stability-review-ece2611"
+final_report_filename: "final-consensus-audit.md"
+individual_report_pattern: "reviewer-{number}.md"
+review_intent: "Stability, reliability, simplicity, package quality, and avoidance of over-engineered or AI-slop code."
+allowed_materials:
+  - "AGENTS.md"
+  - ".understand-anything/knowledge-graph.json for orientation only; verify findings against current files"
+  - "Cargo.toml, Cargo.lock, README.md, CHANGELOG.md, Justfile, release-plz.toml"
+  - "src/**"
+  - "examples/**"
+  - "scripts/publish-crate.sh"
+  - "test/build output independently generated during review, especially cargo test, cargo test --all-features, cargo check --all-targets, just check-features, just check-examples, and just publish-dry where feasible"
+disallowed_materials:
+  - "./audits/** except this reviewer's own assigned output path"
+  - ".understand-anything/intermediate/**"
+  - ".understand-anything/tmp/**"
+  - ".understand-anything/fingerprints.json"
+  - "other reviewer reports"
+  - "root synthesis notes"
+  - "external web/API docs unless explicitly added later"
+review_focuses:
+  reviewer_01: code_review
+  reviewer_02: code_review
+  reviewer_03: code_review
+  reviewer_04: code_review
+  reviewer_05: code_review

@@ -21,7 +21,7 @@ calling across OpenAI, Anthropic, and Gemini.
 
 ```toml
 [dependencies]
-another-ai-sdk = "0.0.6"
+another-ai-sdk = "0.0.7"
 # Needed for this example's async main. Skip this if your app already has a runtime.
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -77,19 +77,19 @@ Default features are `providers-all` plus `streaming`.
 Use only the core SDK types without provider HTTP dependencies:
 
 ```toml
-another-ai-sdk = { version = "0.0.6", default-features = false }
+another-ai-sdk = { version = "0.0.7", default-features = false }
 ```
 
 Enable one provider with streaming:
 
 ```toml
-another-ai-sdk = { version = "0.0.6", default-features = false, features = ["openai", "streaming"] }
+another-ai-sdk = { version = "0.0.7", default-features = false, features = ["openai", "streaming"] }
 ```
 
 Enable the UI-message stream adapter for an HTTP server:
 
 ```toml
-another-ai-sdk = { version = "0.0.6", features = ["message-stream"] }
+another-ai-sdk = { version = "0.0.7", features = ["message-stream"] }
 ```
 
 ## Production Integration

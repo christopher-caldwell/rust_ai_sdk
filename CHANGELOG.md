@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.7](https://github.com/christopher-caldwell/rust_ai_sdk/compare/v0.0.6...v0.0.7) - 2026-07-12
+
+### Added
+
+- Strengthen foundation
+
 ### Changed
 
 - Stream UI-message deltas immediately instead of buffering complete model turns.

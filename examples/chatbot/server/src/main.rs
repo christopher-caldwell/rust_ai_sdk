@@ -47,8 +47,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(3001);
 
     let state = AppState {
-        model: OpenAiChatModel::new(openai_api_key, model),
-        tools: demo_tool_registry(),
+        model: OpenAiChatModel::new(openai_api_key, model)?,
+        tools: demo_tool_registry()?,
     };
 
     let app = Router::new()
@@ -88,7 +88,7 @@ async fn chat_handler(
         .unwrap()
 }
 
-fn demo_tool_registry() -> ToolRegistry {
+fn demo_tool_registry() -> Result<ToolRegistry, SdkError> {
     ToolRegistry::new()
         .register(
             ToolDefinition::new(
@@ -114,7 +114,7 @@ fn demo_tool_registry() -> ToolRegistry {
                     .unwrap_or("unknown");
                 Ok::<Value, SdkError>(fake_weather(location))
             },
-        )
+        )?
         .register(
             ToolDefinition::new(
                 "get_current_time",

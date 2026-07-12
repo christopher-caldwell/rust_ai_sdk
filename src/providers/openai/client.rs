@@ -14,6 +14,7 @@ use crate::core::{
 #[cfg(feature = "streaming")]
 use super::types::{ChatCompletionChunk, map_finish_reason};
 use super::{
+    super::ProviderHttpConfig,
     error::{OpenAiClientError, truncate_body},
     types::{
         ChatCompletionResponse, OpenAiErrorBody, chat_response_to_chat_result,
@@ -22,9 +23,11 @@ use super::{
 };
 #[cfg(feature = "streaming")]
 use crate::core::stream::StreamEvent;
+#[cfg(feature = "streaming")]
 use crate::core::stream::TextEventStream;
 #[cfg(feature = "streaming")]
 use crate::core::types::{FinishReason, ResponseMetadata, Usage as TokenUsage};
+use crate::providers::transport::read_bounded_body;
 #[cfg(feature = "streaming")]
 use eventsource_stream::Eventsource;
 #[cfg(feature = "streaming")]
@@ -41,12 +44,20 @@ pub struct OpenAiClient {
 }
 
 impl OpenAiClient {
-    pub fn new(api_key: String) -> Self {
-        Self {
+    pub fn new(api_key: String) -> Result<Self, SdkError> {
+        Self::with_config(api_key, ProviderHttpConfig::new())
+    }
+
+    pub(crate) fn with_config(
+        api_key: String,
+        config: ProviderHttpConfig,
+    ) -> Result<Self, SdkError> {
+        let (http, base_url) = config.resolve("OpenAI", DEFAULT_BASE_URL)?;
+        Ok(Self {
             api_key,
-            base_url: DEFAULT_BASE_URL.to_string(),
-            http: reqwest::Client::new(),
-        }
+            base_url,
+            http,
+        })
     }
 
     #[allow(dead_code)] // used in #[cfg(test)] blocks
@@ -134,8 +145,7 @@ impl OpenAiClient {
 
         let status = response.status();
         if !status.is_success() {
-            let bytes = response
-                .bytes()
+            let bytes = read_bounded_body(response, ERROR_BODY_SNIPPET_LEN + 1)
                 .await
                 .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))?;
             return Err(provider_error_from_bytes(status, &bytes));
@@ -185,17 +195,6 @@ impl OpenAiClient {
 
         Ok(Box::pin(stream))
     }
-
-    #[cfg(not(feature = "streaming"))]
-    pub async fn stream(
-        &self,
-        _model: &str,
-        _request: &TextRequest,
-    ) -> Result<TextEventStream, SdkError> {
-        Err(SdkError::Validation(
-            "OpenAI streaming requires the `streaming` feature.".to_string(),
-        ))
-    }
 }
 
 async fn send_json_request(
@@ -209,15 +208,17 @@ async fn send_json_request(
 
 async fn decode_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, SdkError> {
     let status = response.status();
+    if !status.is_success() {
+        let bytes = read_bounded_body(response, ERROR_BODY_SNIPPET_LEN + 1)
+            .await
+            .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))?;
+        return Err(provider_error_from_bytes(status, &bytes));
+    }
+
     let bytes = response
         .bytes()
         .await
         .map_err(|e| SdkError::from(OpenAiClientError::Reqwest(e)))?;
-
-    if !status.is_success() {
-        return Err(provider_error_from_bytes(status, &bytes));
-    }
-
     Ok(bytes.to_vec())
 }
 
@@ -467,18 +468,15 @@ fn drain_tool_calls(acc: &mut StreamAccumulator) -> Vec<(u32, ToolCallBuffer)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::message::{Message, Role};
+    use crate::core::message::Message;
+    #[cfg(feature = "streaming")]
     use crate::core::types::FinishReason;
     use mockito;
     use serde_json::json;
 
     fn test_request() -> TextRequest {
         TextRequest {
-            messages: vec![Message {
-                role: Role::User,
-                content: "Hello!".to_string(),
-                parts: vec![],
-            }],
+            messages: vec![Message::user("Hello!")],
             max_output_tokens: Some(10),
             temperature: Some(0.7),
             tools: vec![],
@@ -1010,6 +1008,7 @@ mod tests {
         assert!(saw_finished);
     }
 
+    #[cfg(feature = "streaming")]
     #[test]
     fn test_process_chunk_preserves_malformed_tool_json() {
         let mut acc = StreamAccumulator::default();

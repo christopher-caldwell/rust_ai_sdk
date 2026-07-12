@@ -13,10 +13,15 @@ use super::{
 /// boundaries.
 #[derive(Debug, Clone, Default)]
 pub struct TextRequest {
+    /// Ordered system, user, assistant, and tool-result messages.
     pub messages: Vec<Message>,
+    /// Maximum output tokens requested from the provider.
     pub max_output_tokens: Option<u32>,
+    /// Sampling temperature in the provider-neutral range `0.0..=2.0`.
     pub temperature: Option<f32>,
+    /// Tools advertised to the model.
     pub tools: Vec<ToolDefinition>,
+    /// Tool-selection policy.
     pub tool_choice: Option<ToolChoice>,
 }
 
@@ -43,30 +48,35 @@ impl TextRequest {
     }
 
     #[must_use]
+    /// Append a message without validating the complete request yet.
     pub fn with_message(mut self, message: Message) -> Self {
         self.messages.push(message);
         self
     }
 
     #[must_use]
+    /// Set the maximum number of generated tokens.
     pub fn with_max_output_tokens(mut self, tokens: u32) -> Self {
         self.max_output_tokens = Some(tokens);
         self
     }
 
     #[must_use]
+    /// Set the provider-neutral sampling temperature.
     pub fn with_temperature(mut self, temperature: f32) -> Self {
         self.temperature = Some(temperature);
         self
     }
 
     #[must_use]
+    /// Replace the advertised tool definitions.
     pub fn with_tools(mut self, tools: Vec<ToolDefinition>) -> Self {
         self.tools = tools;
         self
     }
 
     #[must_use]
+    /// Set the tool-selection policy.
     pub fn with_tool_choice(mut self, choice: ToolChoice) -> Self {
         self.tool_choice = Some(choice);
         self
@@ -76,6 +86,7 @@ impl TextRequest {
     pub fn validate(&self) -> Result<(), SdkError> {
         validate_request_has_messages(self)?;
         validate_generation_options(self)?;
+        validate_tool_definitions(self)?;
         validate_tool_choice(self)?;
         validate_message_sequence(self)?;
 
@@ -91,62 +102,81 @@ pub struct TextRequestBuilder {
 
 impl TextRequestBuilder {
     #[must_use]
+    /// Append one message.
     pub fn message(mut self, message: Message) -> Self {
         self.request.messages.push(message);
         self
     }
 
     #[must_use]
+    /// Replace the complete message history.
     pub fn messages(mut self, messages: impl Into<Vec<Message>>) -> Self {
         self.request.messages = messages.into();
         self
     }
 
     #[must_use]
+    /// Append a user prompt.
     pub fn prompt(mut self, prompt: impl Into<String>) -> Self {
         self.request.messages.push(Message::user(prompt));
         self
     }
 
     #[must_use]
+    /// Append a trusted system instruction.
     pub fn system(mut self, text: impl Into<String>) -> Self {
         self.request.messages.push(Message::system(text));
         self
     }
 
     #[must_use]
+    /// Set the maximum number of generated tokens.
     pub fn max_output_tokens(mut self, tokens: u32) -> Self {
         self.request.max_output_tokens = Some(tokens);
         self
     }
 
     #[must_use]
+    /// Set the provider-neutral sampling temperature.
     pub fn temperature(mut self, temperature: f32) -> Self {
         self.request.temperature = Some(temperature);
         self
     }
 
     #[must_use]
+    /// Replace the advertised tool definitions.
     pub fn tools(mut self, tools: Vec<ToolDefinition>) -> Self {
         self.request.tools = tools;
         self
     }
 
     #[must_use]
+    /// Set the tool-selection policy.
     pub fn tool_choice(mut self, choice: ToolChoice) -> Self {
         self.request.tool_choice = Some(choice);
         self
     }
 
-    #[must_use]
-    pub fn build(self) -> TextRequest {
-        self.request
+    /// Validate and build the request.
+    pub fn build(self) -> Result<TextRequest, SdkError> {
+        self.request.validate()?;
+        Ok(self.request)
     }
 
+    /// Validate and build the request.
+    ///
+    /// This compatibility alias is equivalent to [`Self::build`].
     pub fn try_build(self) -> Result<TextRequest, SdkError> {
-        self.request.validate()?;
+        self.build()
+    }
 
-        Ok(self.request)
+    /// Build without validation.
+    ///
+    /// This is intended for adapters that deliberately validate at a later
+    /// boundary. Most application code should use [`Self::build`].
+    #[must_use]
+    pub fn build_unchecked(self) -> TextRequest {
+        self.request
     }
 }
 
@@ -175,6 +205,24 @@ fn validate_generation_options(request: &TextRequest) -> Result<(), SdkError> {
             return Err(SdkError::Validation(
                 "temperature must be a finite value between 0.0 and 2.0".to_string(),
             ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_tool_definitions(request: &TextRequest) -> Result<(), SdkError> {
+    let mut names = HashSet::new();
+
+    for (tool_index, tool) in request.tools.iter().enumerate() {
+        tool.validate().map_err(|error| {
+            SdkError::Validation(format!("tool definition {tool_index}: {}", error.message()))
+        })?;
+        if !names.insert(tool.name.as_str()) {
+            return Err(SdkError::Validation(format!(
+                "duplicate tool definition name: {}",
+                tool.name,
+            )));
         }
     }
 
@@ -222,12 +270,44 @@ fn validate_required_tool_choice(request: &TextRequest, name: &str) -> Result<()
 
 fn validate_message_sequence(request: &TextRequest) -> Result<(), SdkError> {
     let mut pending_tool_calls = HashSet::new();
+    let mut seen_tool_calls = HashSet::new();
+    let mut seen_conversation_message = false;
 
     for (message_index, message) in request.messages.iter().enumerate() {
+        if matches!(message.role, Role::System) {
+            if seen_conversation_message {
+                return Err(SdkError::Validation(format!(
+                    "message {message_index} has role System after the conversation started",
+                )));
+            }
+        } else {
+            seen_conversation_message = true;
+        }
+
+        if !pending_tool_calls.is_empty() && !matches!(message.role, Role::Tool) {
+            return Err(SdkError::Validation(format!(
+                "message {message_index} must resolve pending tool calls before another conversational message",
+            )));
+        }
+
         validate_message_content_storage(message_index, message)?;
         validate_message_shape(message_index, message)?;
         validate_tool_results(message_index, message, &mut pending_tool_calls)?;
-        collect_assistant_tool_calls(message_index, message, &mut pending_tool_calls)?;
+        collect_assistant_tool_calls(
+            message_index,
+            message,
+            &mut pending_tool_calls,
+            &mut seen_tool_calls,
+        )?;
+    }
+
+    if !pending_tool_calls.is_empty() {
+        let mut ids = pending_tool_calls.into_iter().collect::<Vec<_>>();
+        ids.sort();
+        return Err(SdkError::Validation(format!(
+            "request ends with unresolved tool calls: {}",
+            ids.join(", "),
+        )));
     }
 
     Ok(())
@@ -237,16 +317,7 @@ fn validate_message_content_storage(
     message_index: usize,
     message: &Message,
 ) -> Result<(), SdkError> {
-    let has_content = !message.content.is_empty();
-    let has_parts = !message.parts.is_empty();
-
-    if has_content && has_parts {
-        return Err(SdkError::Validation(format!(
-            "message {message_index} has both content and parts; use one content representation",
-        )));
-    }
-
-    if !has_content && !has_parts {
+    if message.parts().is_empty() {
         return Err(SdkError::Validation(format!(
             "message {message_index} is empty",
         )));
@@ -301,13 +372,13 @@ fn validate_assistant_message(message_index: usize, message: &Message) -> Result
 }
 
 fn validate_tool_message(message_index: usize, message: &Message) -> Result<(), SdkError> {
-    if message.parts.is_empty() {
+    if message.parts().is_empty() {
         return Err(SdkError::Validation(format!(
             "message {message_index} has role Tool but no tool result parts",
         )));
     }
 
-    for part in &message.parts {
+    for part in message.parts() {
         if !matches!(part, MessagePart::ToolResult(_)) {
             return Err(SdkError::Validation(format!(
                 "message {message_index} has role Tool but contains non-tool-result parts",
@@ -323,7 +394,7 @@ fn validate_tool_results(
     message: &Message,
     pending_tool_calls: &mut HashSet<String>,
 ) -> Result<(), SdkError> {
-    for part in &message.parts {
+    for part in message.parts() {
         let MessagePart::ToolResult(result) = part else {
             continue;
         };
@@ -356,8 +427,9 @@ fn collect_assistant_tool_calls(
     message_index: usize,
     message: &Message,
     pending_tool_calls: &mut HashSet<String>,
+    seen_tool_calls: &mut HashSet<String>,
 ) -> Result<(), SdkError> {
-    for part in &message.parts {
+    for part in message.parts() {
         let MessagePart::ToolCall(call) = part else {
             continue;
         };
@@ -374,13 +446,13 @@ fn collect_assistant_tool_calls(
             )));
         }
 
-        let is_new_tool_call = pending_tool_calls.insert(call.id.clone());
-        if !is_new_tool_call {
+        if !seen_tool_calls.insert(call.id.clone()) {
             return Err(SdkError::Validation(format!(
-                "message {message_index} duplicates pending tool call id: {}",
+                "message {message_index} reuses tool call id: {}",
                 call.id,
             )));
         }
+        pending_tool_calls.insert(call.id.clone());
     }
 
     Ok(())
@@ -404,7 +476,8 @@ mod tests {
                 json!({"type": "object"}),
             )])
             .tool_choice(ToolChoice::Auto)
-            .build();
+            .build()
+            .unwrap();
 
         assert_eq!(request.messages.len(), 2);
         assert_eq!(request.max_output_tokens, Some(128));
@@ -424,31 +497,26 @@ mod tests {
     }
 
     #[test]
-    fn validation_rejects_message_with_content_and_parts() {
-        let request = TextRequest::new(vec![Message {
-            role: Role::User,
-            content: "hello".to_string(),
-            parts: vec![MessagePart::Text("world".to_string())],
-        }]);
+    fn validation_rejects_empty_messages() {
+        let request = TextRequest::new(vec![Message::from_parts(Role::User, vec![])]);
 
         let error = request.validate().unwrap_err();
 
         assert!(matches!(
             error,
-            SdkError::Validation(message) if message.contains("both content and parts")
+            SdkError::Validation(message) if message.contains("is empty")
         ));
     }
 
     #[test]
     fn validation_rejects_tool_result_on_user_role() {
-        let request = TextRequest::new(vec![Message {
-            role: Role::User,
-            content: String::new(),
-            parts: vec![MessagePart::ToolResult(ToolResult::new(
+        let request = TextRequest::new(vec![Message::from_parts(
+            Role::User,
+            vec![MessagePart::ToolResult(ToolResult::new(
                 "call_1",
                 json!({"ok": true}),
             ))],
-        }]);
+        )]);
 
         let error = request.validate().unwrap_err();
 
@@ -499,6 +567,85 @@ mod tests {
         assert!(matches!(
             error,
             SdkError::Validation(message) if message.contains("unknown tool")
+        ));
+    }
+
+    #[test]
+    fn validation_rejects_unresolved_tool_calls() {
+        let request = TextRequest::new(vec![
+            Message::user("weather"),
+            Message::assistant_parts(vec![MessagePart::ToolCall(
+                crate::core::message::ToolCall::new("call_1", "weather", json!({})),
+            )]),
+        ]);
+
+        let error = request.validate().unwrap_err();
+
+        assert!(matches!(
+            error,
+            SdkError::Validation(message) if message.contains("unresolved tool calls")
+        ));
+    }
+
+    #[test]
+    fn validation_rejects_conversation_before_tool_results() {
+        let request = TextRequest::new(vec![
+            Message::user("weather"),
+            Message::assistant_parts(vec![MessagePart::ToolCall(
+                crate::core::message::ToolCall::new("call_1", "weather", json!({})),
+            )]),
+            Message::user("never mind"),
+            Message::tool_result("call_1", json!({"ok": true})),
+        ]);
+
+        let error = request.validate().unwrap_err();
+
+        assert!(matches!(
+            error,
+            SdkError::Validation(message) if message.contains("must resolve pending tool calls")
+        ));
+    }
+
+    #[test]
+    fn validation_rejects_system_messages_after_conversation_start() {
+        let request = TextRequest::new(vec![Message::user("hello"), Message::system("override")]);
+
+        let error = request.validate().unwrap_err();
+
+        assert!(matches!(
+            error,
+            SdkError::Validation(message) if message.contains("after the conversation started")
+        ));
+    }
+
+    #[test]
+    fn validation_rejects_invalid_tool_definitions() {
+        let request = TextRequest::prompt("hello").with_tools(vec![ToolDefinition::new(
+            "lookup",
+            "",
+            json!("not a schema object"),
+        )]);
+
+        let error = request.validate().unwrap_err();
+
+        assert!(matches!(
+            error,
+            SdkError::Validation(message) if message.contains("non-empty description")
+        ));
+    }
+
+    #[test]
+    fn validation_rejects_duplicate_tool_names() {
+        let request = TextRequest::prompt("hello").with_tools(vec![
+            ToolDefinition::new("lookup", "First", json!({"type": "object"})),
+            ToolDefinition::new("lookup", "Second", json!({"type": "object"})),
+        ]);
+
+        let error = request.validate().unwrap_err();
+
+        assert!(matches!(
+            error,
+            SdkError::Validation(message) if message.contains("duplicate tool definition")
         ));
     }
 }

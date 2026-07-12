@@ -39,8 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     fmt::init();
 
     let state = AppState {
-        model: OpenAiChatModel::new(openai_api_key(), openai_model()),
-        tools: demo_tool_registry(),
+        model: OpenAiChatModel::new(openai_api_key(), openai_model())?,
+        tools: demo_tool_registry()?,
     };
 
     let app = Router::new()
@@ -78,12 +78,17 @@ fn build_text_request(
     let messages = messages_to_sdk_messages(input, SYSTEM_PROMPT)?;
     let tool_definitions = tools.definitions();
 
-    Ok(TextRequest::builder()
+    TextRequest::builder()
         .messages(messages)
         .max_output_tokens(options.max_output_tokens)
         .temperature(options.temperature)
         .tools(tool_definitions)
-        .build())
+        .build()
+        .map_err(|error| {
+            another_ai_sdk::runtime::message_stream::MessageStreamInputError::InvalidRequest {
+                message: error.message().to_string(),
+            }
+        })
 }
 
 fn sse_response<S>(stream: S) -> Response
@@ -102,7 +107,7 @@ where
         .unwrap()
 }
 
-fn demo_tool_registry() -> ToolRegistry {
+fn demo_tool_registry() -> Result<ToolRegistry, SdkError> {
     ToolRegistry::new()
         .register(
             ToolDefinition::new(
@@ -128,7 +133,7 @@ fn demo_tool_registry() -> ToolRegistry {
                     .unwrap_or("unknown");
                 Ok::<Value, SdkError>(fake_weather(location))
             },
-        )
+        )?
         .register(
             ToolDefinition::new(
                 "get_current_time",

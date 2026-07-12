@@ -1,4 +1,5 @@
 use crate::core::error::SdkError;
+pub(super) use crate::providers::transport::truncate_body;
 
 #[derive(Debug)]
 pub(super) enum GeminiClientError {
@@ -9,24 +10,10 @@ pub(super) enum GeminiClientError {
 impl From<GeminiClientError> for SdkError {
     fn from(value: GeminiClientError) -> Self {
         match value {
-            GeminiClientError::Reqwest(e) => SdkError::provider_http(
-                "Gemini",
-                e.status().map(|status| status.as_u16()),
-                e.to_string(),
-                None,
-            ),
+            GeminiClientError::Reqwest(e) => {
+                crate::providers::transport::reqwest_error("Gemini", e)
+            }
             GeminiClientError::Serde(e) => SdkError::serialization(Some("Gemini"), e.to_string()),
         }
     }
-}
-
-pub(super) fn truncate_body(body: &str, max_bytes: usize) -> String {
-    if body.len() <= max_bytes {
-        return body.to_string();
-    }
-    let mut end = max_bytes;
-    while end > 0 && !body.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}... (truncated)", &body[..end])
 }

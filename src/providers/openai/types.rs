@@ -363,13 +363,7 @@ fn message_to_chat_messages(msg: &Message) -> Vec<ChatMessage> {
     } else {
         vec![ChatMessage {
             role: role.to_string(),
-            content: text_content.or_else(|| {
-                if msg.is_text_only() {
-                    Some(msg.content.clone())
-                } else {
-                    None
-                }
-            }),
+            content: text_content,
             tool_call_id: None,
             tool_calls: None,
         }]

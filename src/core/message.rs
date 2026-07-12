@@ -1,18 +1,26 @@
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, PartialEq)]
+/// Provider-neutral chat-message role.
 pub enum Role {
+    /// Application-owned system instruction.
     System,
+    /// End-user message.
     User,
+    /// Model-generated message.
     Assistant,
+    /// Result of an assistant tool call.
     Tool,
 }
 
 /// A single unit of content within a message.
 #[derive(Debug, Clone, PartialEq)]
 pub enum MessagePart {
+    /// Plain text content.
     Text(String),
+    /// Tool invocation requested by the assistant.
     ToolCall(ToolCall),
+    /// Application-produced result for a prior tool call.
     ToolResult(ToolResult),
 }
 
@@ -27,22 +35,27 @@ pub struct ProviderMetadata {
 }
 
 impl ProviderMetadata {
+    /// Wrap raw provider-owned metadata.
     pub fn new(raw: Value) -> Self {
         Self { raw }
     }
 
+    /// Borrow the complete raw metadata value.
     pub fn as_raw(&self) -> &Value {
         &self.raw
     }
 
+    /// Consume the wrapper and return the raw value.
     pub fn into_raw(self) -> Value {
         self.raw
     }
 
+    /// Select a provider namespace, falling back to the complete value.
     pub fn provider_value(&self, provider_key: &str) -> &Value {
         self.raw.get(provider_key).unwrap_or(&self.raw)
     }
 
+    /// Read a string from a provider metadata namespace.
     pub fn provider_string(&self, provider_key: &str, metadata_key: &str) -> Option<String> {
         self.provider_value(provider_key)
             .get(metadata_key)?
@@ -60,13 +73,18 @@ impl From<Value> for ProviderMetadata {
 /// A tool invocation emitted by the assistant.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolCall {
+    /// Provider tool-call identifier used to match the result.
     pub id: String,
+    /// Registered tool name.
     pub name: String,
+    /// Parsed JSON arguments supplied by the model.
     pub input: Value,
+    /// Provider-owned continuation metadata.
     pub provider_metadata: Option<ProviderMetadata>,
 }
 
 impl ToolCall {
+    /// Create a tool call with parsed JSON input.
     pub fn new(id: impl Into<String>, name: impl Into<String>, input: Value) -> Self {
         Self {
             id: id.into(),
@@ -76,6 +94,7 @@ impl ToolCall {
         }
     }
 
+    /// Parse raw JSON arguments, preserving malformed input as metadata.
     pub fn from_json_input(
         id: impl Into<String>,
         name: impl Into<String>,
@@ -89,6 +108,7 @@ impl ToolCall {
         }
     }
 
+    /// Create a non-executable tool call that records malformed JSON input.
     pub fn malformed_json_input(
         id: impl Into<String>,
         name: impl Into<String>,
@@ -103,28 +123,33 @@ impl ToolCall {
         }
     }
 
+    /// Attach provider-owned metadata.
     #[must_use]
     pub fn with_provider_metadata(mut self, metadata: impl Into<ProviderMetadata>) -> Self {
         self.provider_metadata = Some(metadata.into());
         self
     }
 
+    /// Return whether the provider supplied malformed JSON arguments.
     pub fn has_malformed_input(&self) -> bool {
         self.malformed_input().is_some()
     }
 
+    /// Return the malformed raw argument string, when present.
     pub fn malformed_input_raw(&self) -> Option<&str> {
         self.malformed_input()
             .and_then(|metadata| metadata.get("raw"))
             .and_then(Value::as_str)
     }
 
+    /// Return the provider JSON parse error, when present.
     pub fn malformed_input_error(&self) -> Option<&str> {
         self.malformed_input()
             .and_then(|metadata| metadata.get("error"))
             .and_then(Value::as_str)
     }
 
+    /// Build the SDK metadata marker used for malformed JSON input.
     pub fn malformed_input_metadata(
         raw_input: impl Into<String>,
         parse_error: impl Into<String>,
@@ -140,6 +165,7 @@ impl ToolCall {
         })
     }
 
+    /// Merge the malformed-input marker into existing provider metadata.
     pub fn metadata_with_malformed_input(
         existing: Option<ProviderMetadata>,
         raw_input: impl Into<String>,
@@ -188,11 +214,14 @@ impl ToolCall {
 /// Output produced by a tool.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ToolOutput {
+    /// Plain-text tool output.
     Text(String),
+    /// Structured JSON tool output.
     Json(Value),
 }
 
 impl ToolOutput {
+    /// Render output in the string representation expected by provider APIs.
     pub fn as_provider_string(&self) -> String {
         match self {
             Self::Text(text) => text.clone(),
@@ -222,11 +251,14 @@ impl From<Value> for ToolOutput {
 /// The result of executing a tool, sent back as a tool-role message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolResult {
+    /// Identifier of the tool call being resolved.
     pub tool_call_id: String,
+    /// Application-produced tool output.
     pub output: ToolOutput,
 }
 
 impl ToolResult {
+    /// Create a result for a prior tool-call identifier.
     pub fn new(tool_call_id: impl Into<String>, output: impl Into<ToolOutput>) -> Self {
         Self {
             tool_call_id: tool_call_id.into(),
@@ -235,42 +267,41 @@ impl ToolResult {
     }
 }
 
-/// A chat message. Simple text messages use `content`; structured messages use `parts`.
-///
-/// Provider translators call `effective_parts()` so both old-style struct literals
-/// (`Message { role, content, parts: vec![] }`) and new-style constructors work
-/// identically at the wire level.
+/// A chat message with one canonical sequence of structured parts.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Message {
+    /// Role that determines the message's provider semantics.
     pub role: Role,
-    /// Plain text content — used when `parts` is empty.
-    pub content: String,
-    /// Structured parts. When non-empty, supersedes `content` at the wire level.
-    pub parts: Vec<MessagePart>,
+    parts: Vec<MessagePart>,
 }
 
 impl Message {
+    /// Create a message from an explicit role and part sequence.
+    pub fn from_parts(role: Role, parts: Vec<MessagePart>) -> Self {
+        Self { role, parts }
+    }
+
+    /// Create a plain-text user message.
     pub fn user(text: impl Into<String>) -> Self {
         Self {
             role: Role::User,
-            content: text.into(),
-            parts: vec![],
+            parts: vec![MessagePart::Text(text.into())],
         }
     }
 
+    /// Create a plain-text assistant message.
     pub fn assistant(text: impl Into<String>) -> Self {
         Self {
             role: Role::Assistant,
-            content: text.into(),
-            parts: vec![],
+            parts: vec![MessagePart::Text(text.into())],
         }
     }
 
+    /// Create a trusted application system instruction.
     pub fn system(text: impl Into<String>) -> Self {
         Self {
             role: Role::System,
-            content: text.into(),
-            parts: vec![],
+            parts: vec![MessagePart::Text(text.into())],
         }
     }
 
@@ -278,7 +309,6 @@ impl Message {
     pub fn assistant_parts(parts: Vec<MessagePart>) -> Self {
         Self {
             role: Role::Assistant,
-            content: String::new(),
             parts,
         }
     }
@@ -287,7 +317,6 @@ impl Message {
     pub fn tool_result(tool_call_id: impl Into<String>, output: impl Into<ToolOutput>) -> Self {
         Self {
             role: Role::Tool,
-            content: String::new(),
             parts: vec![MessagePart::ToolResult(ToolResult::new(
                 tool_call_id,
                 output,
@@ -301,21 +330,32 @@ impl Message {
 
         Self {
             role: Role::Tool,
-            content: String::new(),
             parts,
         }
     }
 
-    /// Returns the effective parts: `parts` if non-empty, else a single `Text` from `content`.
-    pub fn effective_parts(&self) -> Vec<MessagePart> {
-        if !self.parts.is_empty() {
-            self.parts.clone()
-        } else {
-            vec![MessagePart::Text(self.content.clone())]
+    /// Borrow the canonical message parts.
+    pub fn parts(&self) -> &[MessagePart] {
+        &self.parts
+    }
+
+    /// Return the text when this is a single-part text message.
+    pub fn text(&self) -> Option<&str> {
+        match self.parts.as_slice() {
+            [MessagePart::Text(text)] => Some(text),
+            _ => None,
         }
     }
 
+    /// Borrow the canonical parts used by provider translators.
+    pub fn effective_parts(&self) -> &[MessagePart] {
+        &self.parts
+    }
+
+    /// Return whether all message parts are text.
     pub fn is_text_only(&self) -> bool {
-        self.parts.is_empty()
+        self.parts
+            .iter()
+            .all(|part| matches!(part, MessagePart::Text(_)))
     }
 }

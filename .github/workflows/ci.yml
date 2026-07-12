@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy,rustfmt
+          rustup default stable
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Test all features
+        run: cargo test --all-targets --all-features
+      - name: Test feature matrix
+        run: |
+          cargo test --no-default-features
+          cargo test --no-default-features --features openai
+          cargo test --no-default-features --features anthropic
+          cargo test --no-default-features --features gemini
+          cargo test --no-default-features --features providers-all,streaming
+          cargo test --no-default-features --features message-stream
+      - name: Strict rustdoc
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo doc --no-default-features --no-deps
+          cargo doc --all-features --no-deps
+      - name: Check Rust examples
+        run: |
+          cargo check --manifest-path examples/standalone/Cargo.toml
+          cargo check --manifest-path examples/chatbot/server/Cargo.toml
+          cargo check --manifest-path examples/chatbot/server-explicit/Cargo.toml
+      - name: Verify release and package contents
+        run: scripts/publish-crate.sh --check-only
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust 1.85
+        run: |
+          rustup toolchain install 1.85 --profile minimal
+          rustup default 1.85
+      - name: Check minimum Rust version
+        run: cargo check --all-targets --all-features
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/chatbot/web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: examples/chatbot/web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Check RustSec advisories
+        run: |
+          cargo audit
+          cargo audit --file examples/standalone/Cargo.lock
+          cargo audit --file examples/chatbot/server/Cargo.lock
+          cargo audit --file examples/chatbot/server-explicit/Cargo.lock

@@ -5,6 +5,8 @@ use serde::de::DeserializeOwned;
 
 #[cfg(feature = "streaming")]
 use crate::core::message::ToolCall;
+#[cfg(feature = "streaming")]
+use crate::core::provider_policy::finish_reason_with_tool_override;
 use crate::core::{
     error::SdkError,
     request::TextRequest,
@@ -17,6 +19,7 @@ use super::types::{
     ErrorEvent, EventEnvelope, MessageDeltaEvent, MessageStartEvent, map_stop_reason,
 };
 use super::{
+    super::ProviderHttpConfig,
     error::{AnthropicClientError, truncate_body},
     types::{
         AnthropicErrorResponse, AnthropicResponse, anthropic_response_to_chat_result,
@@ -25,9 +28,11 @@ use super::{
 };
 #[cfg(feature = "streaming")]
 use crate::core::stream::StreamEvent;
+#[cfg(feature = "streaming")]
 use crate::core::stream::TextEventStream;
 #[cfg(feature = "streaming")]
 use crate::core::types::{FinishReason, ResponseMetadata, Usage as TokenUsage};
+use crate::providers::transport::read_bounded_body;
 #[cfg(feature = "streaming")]
 use eventsource_stream::Eventsource;
 #[cfg(feature = "streaming")]
@@ -44,12 +49,20 @@ pub struct AnthropicClient {
 }
 
 impl AnthropicClient {
-    pub fn new(api_key: String) -> Self {
-        Self {
+    pub fn new(api_key: String) -> Result<Self, SdkError> {
+        Self::with_config(api_key, ProviderHttpConfig::new())
+    }
+
+    pub(crate) fn with_config(
+        api_key: String,
+        config: ProviderHttpConfig,
+    ) -> Result<Self, SdkError> {
+        let (http, base_url) = config.resolve("Anthropic", DEFAULT_BASE_URL)?;
+        Ok(Self {
             api_key,
-            base_url: DEFAULT_BASE_URL.to_string(),
-            http: reqwest::Client::new(),
-        }
+            base_url,
+            http,
+        })
     }
 
     #[allow(dead_code)] // used in #[cfg(test)] blocks
@@ -131,8 +144,7 @@ impl AnthropicClient {
 
         let status = response.status();
         if !status.is_success() {
-            let bytes = response
-                .bytes()
+            let bytes = read_bounded_body(response, ERROR_BODY_SNIPPET_LEN + 1)
                 .await
                 .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))?;
             return Err(provider_error_from_bytes(status, &bytes));
@@ -160,10 +172,14 @@ impl AnthropicClient {
                         Some((items, (events, acc, false)))
                     }
                     None => {
-                        let mut items = vec![];
-                        if !acc.finished_emitted {
-                            items.push(Ok(acc.build_finished_event()));
-                        }
+                        let items = if acc.finished_emitted {
+                            vec![]
+                        } else {
+                            vec![Err(SdkError::stream_terminated(
+                                Some("anthropic"),
+                                "SSE stream ended before message_stop",
+                            ))]
+                        };
                         Some((items, (events, acc, true)))
                     }
                 }
@@ -172,17 +188,6 @@ impl AnthropicClient {
         .flat_map(futures_util::stream::iter);
 
         Ok(Box::pin(stream))
-    }
-
-    #[cfg(not(feature = "streaming"))]
-    pub async fn stream(
-        &self,
-        _model: &str,
-        _request: &TextRequest,
-    ) -> Result<TextEventStream, SdkError> {
-        Err(SdkError::Validation(
-            "Anthropic streaming requires the `streaming` feature.".to_string(),
-        ))
     }
 }
 
@@ -197,15 +202,17 @@ async fn send_json_request(
 
 async fn decode_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, SdkError> {
     let status = response.status();
+    if !status.is_success() {
+        let bytes = read_bounded_body(response, ERROR_BODY_SNIPPET_LEN + 1)
+            .await
+            .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))?;
+        return Err(provider_error_from_bytes(status, &bytes));
+    }
+
     let bytes = response
         .bytes()
         .await
         .map_err(|e| SdkError::from(AnthropicClientError::Reqwest(e)))?;
-
-    if !status.is_success() {
-        return Err(provider_error_from_bytes(status, &bytes));
-    }
-
     Ok(bytes.to_vec())
 }
 
@@ -252,6 +259,7 @@ struct StreamAccumulator {
     output_tokens: Option<u32>,
     finish_reason: Option<FinishReason>,
     finished_emitted: bool,
+    has_tool_calls: bool,
     tool_call_buffers: HashMap<u32, ToolCallBuffer>,
 }
 
@@ -268,12 +276,10 @@ impl StreamAccumulator {
     fn build_finished_event(&mut self) -> StreamEvent {
         self.finished_emitted = true;
 
-        let total_tokens = match (self.input_tokens, self.output_tokens) {
-            (Some(i), Some(o)) => Some(i + o),
-            (Some(i), None) => Some(i),
-            (None, Some(o)) => Some(o),
-            (None, None) => None,
-        };
+        let total_tokens = self
+            .input_tokens
+            .zip(self.output_tokens)
+            .and_then(|(input, output)| input.checked_add(output));
 
         let usage = if self.input_tokens.is_some() || self.output_tokens.is_some() {
             Some(TokenUsage {
@@ -286,10 +292,10 @@ impl StreamAccumulator {
         };
 
         StreamEvent::Finished {
-            finish_reason: self
-                .finish_reason
-                .take()
-                .unwrap_or_else(|| FinishReason::Other("unknown".to_string())),
+            finish_reason: finish_reason_with_tool_override(
+                self.finish_reason.take(),
+                self.has_tool_calls,
+            ),
             usage,
             response: ResponseMetadata {
                 id: self.id.take(),
@@ -368,6 +374,7 @@ fn process_event(data: &str, acc: &mut StreamAccumulator) -> Vec<Result<StreamEv
                         index: evt.index,
                     })]
                 }
+                ContentBlockStart::Unknown => vec![],
             },
             Err(e) => vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
         },
@@ -379,6 +386,7 @@ fn process_event(data: &str, acc: &mut StreamAccumulator) -> Vec<Result<StreamEv
                 };
 
                 let call = ToolCall::from_json_input(buffer.id, buffer.name, &buffer.input);
+                acc.has_tool_calls = true;
                 vec![Ok(StreamEvent::ToolCallReady {
                     id: call.id,
                     name: call.name,
@@ -424,18 +432,15 @@ fn process_event(data: &str, acc: &mut StreamAccumulator) -> Vec<Result<StreamEv
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::message::{Message, Role};
+    use crate::core::message::Message;
+    #[cfg(feature = "streaming")]
     use crate::core::types::FinishReason;
     use mockito;
     use serde_json::json;
 
     fn test_request() -> TextRequest {
         TextRequest {
-            messages: vec![Message {
-                role: Role::User,
-                content: "Hello!".to_string(),
-                parts: vec![],
-            }],
+            messages: vec![Message::user("Hello!")],
             max_output_tokens: Some(10),
             temperature: Some(0.7),
             tools: vec![],
@@ -620,6 +625,18 @@ mod tests {
 
     #[cfg(feature = "streaming")]
     #[test]
+    fn test_unknown_content_block_kind_is_ignored() {
+        let mut acc = StreamAccumulator::default();
+        let result = process_event(
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"future_block","value":"ignored"}}"#,
+            &mut acc,
+        );
+
+        assert!(result.is_empty());
+    }
+
+    #[cfg(feature = "streaming")]
+    #[test]
     fn test_process_event_content_block_start_tool_use() {
         let mut acc = StreamAccumulator::default();
         let result = process_event(
@@ -666,6 +683,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "streaming")]
     #[test]
     fn test_process_event_preserves_malformed_tool_json() {
         let mut acc = StreamAccumulator::default();
@@ -833,7 +851,7 @@ mod tests {
 
     #[cfg(feature = "streaming")]
     #[tokio::test]
-    async fn test_stream_fallback_finished() {
+    async fn test_stream_without_message_stop_returns_error() {
         let mut server = mockito::Server::new_async().await;
 
         // No message_stop event
@@ -866,33 +884,21 @@ mod tests {
         mock.assert_async().await;
 
         let mut text = String::new();
-        let mut finished_count = 0;
+        let mut termination_error = None;
 
         while let Some(evt) = stream.next().await {
-            match evt.unwrap() {
-                StreamEvent::TextDelta(d) => text.push_str(&d),
-                StreamEvent::Finished {
-                    finish_reason,
-                    usage,
-                    response,
-                } => {
-                    assert!(matches!(finish_reason, FinishReason::Stop));
-                    assert_eq!(response.id.as_deref(), Some("msg_456"));
-                    assert_eq!(response.model.as_deref(), Some("claude-3-haiku"));
-                    let u = usage.expect("usage should be present");
-                    assert_eq!(u.input_tokens, Some(8));
-                    assert_eq!(u.output_tokens, Some(2));
-                    assert_eq!(u.total_tokens, Some(10));
-                    finished_count += 1;
-                }
-                _ => {}
+            match evt {
+                Ok(StreamEvent::TextDelta(d)) => text.push_str(&d),
+                Err(error) => termination_error = Some(error),
+                Ok(_) => {}
             }
         }
         assert_eq!(text, "Hi");
-        assert_eq!(
-            finished_count, 1,
-            "Should emit exactly one fallback Finished"
-        );
+        assert!(matches!(
+            termination_error,
+            Some(SdkError::StreamTerminated { provider, .. })
+                if provider.as_deref() == Some("anthropic")
+        ));
     }
 
     #[cfg(feature = "streaming")]

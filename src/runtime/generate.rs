@@ -5,6 +5,7 @@ use crate::core::{
     result::{ChatResult, TextResult},
 };
 
+/// Generate a text-only result through a provider-neutral model.
 pub async fn generate_text<M: LanguageModel + ?Sized>(
     model: &M,
     request: TextRequest,
@@ -12,6 +13,7 @@ pub async fn generate_text<M: LanguageModel + ?Sized>(
     model.generate(request).await
 }
 
+/// Generate a structured result that may contain tool calls.
 pub async fn generate_chat<M: LanguageModel + ?Sized>(
     model: &M,
     request: TextRequest,

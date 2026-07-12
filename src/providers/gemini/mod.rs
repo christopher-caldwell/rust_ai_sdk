@@ -1,6 +1,7 @@
 mod client;
 mod error;
-pub mod model;
+mod model;
+/// Gemini model identifiers.
 pub mod models;
 mod types;
 

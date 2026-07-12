@@ -1,8 +1,9 @@
 use crate::core::{
-    error::SdkError, model::LanguageModel, request::TextRequest, stream::TextEventStream,
+    error::SdkError, model::StreamingLanguageModel, request::TextRequest, stream::TextEventStream,
 };
 
-pub async fn stream_text<M: LanguageModel + ?Sized>(
+/// Start a provider-neutral stream of text, tool-call, and terminal events.
+pub async fn stream_text<M: StreamingLanguageModel + ?Sized>(
     model: &M,
     request: TextRequest,
 ) -> Result<TextEventStream, SdkError> {

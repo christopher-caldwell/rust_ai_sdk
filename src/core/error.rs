@@ -1,5 +1,22 @@
 use std::{error::Error, fmt};
 
+/// Stable category for HTTP transport failures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransportErrorKind {
+    /// A request exceeded its configured timeout.
+    Timeout,
+    /// A connection could not be established.
+    Connect,
+    /// A request could not be constructed or sent.
+    Request,
+    /// A response body could not be read.
+    Body,
+    /// A response could not be decoded.
+    Decode,
+    /// Another transport failure.
+    Other,
+}
+
 /// Crate-wide error type returned by provider wrappers and runtime helpers.
 ///
 /// The variants are intentionally provider-neutral. Provider translators map
@@ -7,42 +24,72 @@ use std::{error::Error, fmt};
 /// so application code can handle errors consistently across providers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SdkError {
+    /// An HTTP transport or response failure.
     Http {
+        /// Provider that produced the failure, when known.
         provider: Option<String>,
+        /// HTTP status code, when a response was received.
         status: Option<u16>,
+        /// Human-readable failure summary.
         message: String,
+        /// Bounded response-body excerpt for diagnostics.
         body: Option<String>,
+        /// Stable transport category, when this was a client-side failure.
+        transport_kind: Option<TransportErrorKind>,
     },
 
+    /// A structured error response returned by a provider API.
     Api {
+        /// Provider that returned the error, when known.
         provider: Option<String>,
+        /// HTTP status code, when available.
         status: Option<u16>,
+        /// Provider-specific error code.
         code: Option<String>,
+        /// Provider-specific error type.
         error_type: Option<String>,
+        /// Human-readable provider message.
         message: String,
+        /// Bounded response-body excerpt for diagnostics.
         body: Option<String>,
     },
 
+    /// A provider payload could not be serialized or deserialized.
     Serialization {
+        /// Provider associated with the payload, when known.
         provider: Option<String>,
+        /// Serialization failure summary.
         message: String,
     },
 
+    /// A stream ended without the provider's terminal event.
+    StreamTerminated {
+        /// Provider whose stream ended, when known.
+        provider: Option<String>,
+        /// Description of the missing terminal condition.
+        message: String,
+    },
+
+    /// A request or application input violated an SDK invariant.
     Validation(String),
 
+    /// A failure that does not fit a more specific category.
     Unknown(String),
 }
 
 impl SdkError {
+    /// Build an HTTP error without provider metadata.
     pub fn http(message: impl Into<String>) -> Self {
         Self::Http {
             provider: None,
             status: None,
             message: message.into(),
             body: None,
+            transport_kind: None,
         }
     }
 
+    /// Build an HTTP error with provider, status, and bounded body context.
     pub fn provider_http(
         provider: impl Into<String>,
         status: Option<u16>,
@@ -54,9 +101,27 @@ impl SdkError {
             status,
             message: message.into(),
             body,
+            transport_kind: None,
         }
     }
 
+    /// Build a categorized provider transport error.
+    pub fn provider_transport(
+        provider: impl Into<String>,
+        status: Option<u16>,
+        kind: TransportErrorKind,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::Http {
+            provider: Some(provider.into()),
+            status,
+            message: message.into(),
+            body: None,
+            transport_kind: Some(kind),
+        }
+    }
+
+    /// Build an API error without provider metadata.
     pub fn api(message: impl Into<String>) -> Self {
         Self::Api {
             provider: None,
@@ -68,6 +133,7 @@ impl SdkError {
         }
     }
 
+    /// Build a structured provider API error.
     pub fn provider_api(
         provider: impl Into<String>,
         status: Option<u16>,
@@ -86,6 +152,7 @@ impl SdkError {
         }
     }
 
+    /// Build a serialization error with optional provider context.
     pub fn serialization(provider: Option<&str>, message: impl Into<String>) -> Self {
         Self::Serialization {
             provider: provider.map(ToString::to_string),
@@ -93,54 +160,96 @@ impl SdkError {
         }
     }
 
+    /// Build an error for a stream that ended before a terminal event.
+    pub fn stream_terminated(provider: Option<&str>, message: impl Into<String>) -> Self {
+        Self::StreamTerminated {
+            provider: provider.map(ToString::to_string),
+            message: message.into(),
+        }
+    }
+
+    /// Return the provider associated with this error, when available.
     pub fn provider(&self) -> Option<&str> {
         match self {
             Self::Http { provider, .. }
             | Self::Api { provider, .. }
-            | Self::Serialization { provider, .. } => provider.as_deref(),
+            | Self::Serialization { provider, .. }
+            | Self::StreamTerminated { provider, .. } => provider.as_deref(),
             Self::Validation(_) | Self::Unknown(_) => None,
         }
     }
 
+    /// Return the HTTP status code associated with this error, when available.
     pub fn status_code(&self) -> Option<u16> {
         match self {
             Self::Http { status, .. } | Self::Api { status, .. } => *status,
-            Self::Serialization { .. } | Self::Validation(_) | Self::Unknown(_) => None,
+            Self::Serialization { .. }
+            | Self::StreamTerminated { .. }
+            | Self::Validation(_)
+            | Self::Unknown(_) => None,
         }
     }
 
+    /// Return the provider-specific error code, when available.
     pub fn provider_code(&self) -> Option<&str> {
         match self {
             Self::Api { code, .. } => code.as_deref(),
             Self::Http { .. }
             | Self::Serialization { .. }
+            | Self::StreamTerminated { .. }
             | Self::Validation(_)
             | Self::Unknown(_) => None,
         }
     }
 
+    /// Return the provider-specific error type, when available.
     pub fn provider_error_type(&self) -> Option<&str> {
         match self {
             Self::Api { error_type, .. } => error_type.as_deref(),
             Self::Http { .. }
             | Self::Serialization { .. }
+            | Self::StreamTerminated { .. }
             | Self::Validation(_)
             | Self::Unknown(_) => None,
         }
     }
 
+    /// Return the bounded provider response body, when one was captured.
     pub fn body_snippet(&self) -> Option<&str> {
         match self {
             Self::Http { body, .. } | Self::Api { body, .. } => body.as_deref(),
-            Self::Serialization { .. } | Self::Validation(_) | Self::Unknown(_) => None,
+            Self::Serialization { .. }
+            | Self::StreamTerminated { .. }
+            | Self::Validation(_)
+            | Self::Unknown(_) => None,
         }
     }
 
+    /// Return a stable transport category, when available.
+    pub fn transport_kind(&self) -> Option<TransportErrorKind> {
+        match self {
+            Self::Http { transport_kind, .. } => *transport_kind,
+            _ => None,
+        }
+    }
+
+    /// Return whether this is a categorized timeout failure.
+    pub fn is_timeout(&self) -> bool {
+        self.transport_kind() == Some(TransportErrorKind::Timeout)
+    }
+
+    /// Return whether this is a categorized connection failure.
+    pub fn is_connect(&self) -> bool {
+        self.transport_kind() == Some(TransportErrorKind::Connect)
+    }
+
+    /// Return the human-readable message without category formatting.
     pub fn message(&self) -> &str {
         match self {
             Self::Http { message, .. }
             | Self::Api { message, .. }
             | Self::Serialization { message, .. }
+            | Self::StreamTerminated { message, .. }
             | Self::Validation(message)
             | Self::Unknown(message) => message,
         }
@@ -183,6 +292,13 @@ impl fmt::Display for SdkError {
             Self::Serialization { provider, message } => write_error(
                 formatter,
                 "Serialization error",
+                provider.as_deref(),
+                None,
+                message,
+            ),
+            Self::StreamTerminated { provider, message } => write_error(
+                formatter,
+                "Stream terminated",
                 provider.as_deref(),
                 None,
                 message,
@@ -246,6 +362,20 @@ mod tests {
             error.to_string(),
             "HTTP error (OpenAI, HTTP 429): rate limited"
         );
+    }
+
+    #[test]
+    fn transport_errors_expose_stable_categories() {
+        let error = SdkError::provider_transport(
+            "test",
+            None,
+            TransportErrorKind::Timeout,
+            "request timed out",
+        );
+
+        assert!(error.is_timeout());
+        assert!(!error.is_connect());
+        assert_eq!(error.transport_kind(), Some(TransportErrorKind::Timeout));
     }
 
     #[test]

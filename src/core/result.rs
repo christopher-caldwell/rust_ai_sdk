@@ -2,10 +2,15 @@ use super::message::{MessagePart, ToolCall};
 use super::types::{FinishReason, ResponseMetadata, Usage};
 
 #[derive(Debug, Clone)]
+/// Text-only result returned by convenience generation helpers.
 pub struct TextResult {
+    /// Generated assistant text.
     pub text: String,
+    /// Why the provider ended generation.
     pub finish_reason: FinishReason,
+    /// Token usage reported by the provider.
     pub usage: Option<Usage>,
+    /// Provider response identifier and model metadata.
     pub response: ResponseMetadata,
 }
 
@@ -14,8 +19,11 @@ pub struct TextResult {
 pub struct ChatResult {
     /// The assistant's turn as structured parts (text + tool calls, in order).
     pub parts: Vec<MessagePart>,
+    /// Why the provider ended generation.
     pub finish_reason: FinishReason,
+    /// Token usage reported by the provider.
     pub usage: Option<Usage>,
+    /// Provider response identifier and model metadata.
     pub response: ResponseMetadata,
 }
 
@@ -49,6 +57,7 @@ impl ChatResult {
             .collect()
     }
 
+    /// Return whether the assistant emitted at least one tool call.
     pub fn has_tool_calls(&self) -> bool {
         self.parts
             .iter()

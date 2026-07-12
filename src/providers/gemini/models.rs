@@ -1,21 +1,29 @@
 /// Known Gemini model IDs as of the library release.
 ///
 /// This list is opt-in. Pass any `&str` or `String` directly to
-/// [`GeminiChatModel::new`](super::model::GeminiChatModel::new) to use a model not listed here.
+/// [`GeminiChatModel::new`](super::GeminiChatModel::new) to use a model not listed here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GeminiModel {
     // Gemini 3 preview text/function-capable models.
+    /// Gemini 3.1 Pro preview.
     Gemini3_1ProPreview,
+    /// Gemini 3.1 Pro preview with custom-tool support.
     Gemini3_1ProPreviewCustomTools,
+    /// Gemini 3 Flash preview.
     Gemini3FlashPreview,
+    /// Gemini 3.1 Flash Lite preview.
     Gemini3_1FlashLitePreview,
     // Stable Gemini 2.5 text/function-capable models.
+    /// Stable Gemini 2.5 Pro.
     Gemini2_5Pro,
+    /// Stable Gemini 2.5 Flash.
     Gemini2_5Flash,
+    /// Stable Gemini 2.5 Flash Lite.
     Gemini2_5FlashLite,
 }
 
 impl GeminiModel {
+    /// Return the provider model identifier.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Gemini3_1ProPreview => "gemini-3.1-pro-preview",

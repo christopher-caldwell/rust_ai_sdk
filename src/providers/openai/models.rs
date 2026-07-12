@@ -5,29 +5,45 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenAiModel {
     // ── GPT-5.4 ─────────────────────────────────────────
+    /// GPT-5.4 general model.
     Gpt5_4,
+    /// Smaller GPT-5.4 model.
     Gpt5_4Mini,
+    /// Lowest-cost GPT-5.4 model.
     Gpt5_4Nano,
+    /// Higher-capability GPT-5.4 model.
     Gpt5_4Pro,
     // ── GPT-5.2 ─────────────────────────────────────────
+    /// GPT-5.2 general model.
     Gpt5_2,
+    /// Higher-capability GPT-5.2 model.
     Gpt5_2Pro,
     // ── GPT-5.1 ─────────────────────────────────────────
+    /// GPT-5.1 general model.
     Gpt5_1,
     // ── GPT-5 ───────────────────────────────────────────
+    /// GPT-5 general model.
     Gpt5,
+    /// Smaller GPT-5 model.
     Gpt5Mini,
+    /// Lowest-cost GPT-5 model.
     Gpt5Nano,
+    /// Higher-capability GPT-5 model.
     Gpt5Pro,
     // ── GPT-4.1 ─────────────────────────────────────────
+    /// GPT-4.1 general model.
     Gpt4_1,
+    /// Smaller GPT-4.1 model.
     Gpt4_1Mini,
+    /// Lowest-cost GPT-4.1 model.
     Gpt4_1Nano,
     // ── GPT-4o ──────────────────────────────────────────
+    /// GPT-4o general model.
     Gpt4o,
 }
 
 impl OpenAiModel {
+    /// Return the provider model identifier.
     pub fn as_str(self) -> &'static str {
         match self {
             // GPT-5.4

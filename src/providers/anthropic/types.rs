@@ -4,7 +4,10 @@ use serde_json::Value;
 use crate::core::{
     error::SdkError,
     message::{Message, MessagePart, Role, ToolCall},
-    provider_policy::{ToolChoicePolicy, tool_choice_policy, unknown_finish_reason},
+    provider_policy::{
+        ToolChoicePolicy, finish_reason_with_tool_override, tool_choice_policy,
+        unknown_finish_reason,
+    },
     request::TextRequest,
     result::{ChatResult, TextResult},
     types::{FinishReason, ResponseMetadata, Usage as TokenUsage},
@@ -172,6 +175,8 @@ pub(super) enum ContentBlockStart {
     Text { text: Option<String> },
     #[serde(rename = "tool_use")]
     ToolUse { id: String, name: String },
+    #[serde(other)]
+    Unknown,
 }
 
 /// `content_block_stop` - marks the end of a text or tool-use block.
@@ -266,10 +271,10 @@ pub(super) fn text_request_to_anthropic(
 
 fn system_text(msg: &Message) -> String {
     msg.effective_parts()
-        .into_iter()
+        .iter()
         .filter_map(|part| {
             if let MessagePart::Text(text) = part {
-                Some(text)
+                Some(text.as_str())
             } else {
                 None
             }
@@ -279,12 +284,12 @@ fn system_text(msg: &Message) -> String {
 }
 
 fn message_content(msg: &Message) -> AnthropicMessageContent {
-    if msg.parts.is_empty() {
-        return AnthropicMessageContent::Text(msg.content.clone());
+    if let Some(text) = msg.text() {
+        return AnthropicMessageContent::Text(text.to_string());
     }
 
     let parts = msg
-        .parts
+        .parts()
         .iter()
         .map(|part| match part {
             MessagePart::Text(text) => AnthropicContentPart::Text { text: text.clone() },
@@ -331,14 +336,13 @@ pub(super) fn anthropic_response_to_text_result(
         .map(map_stop_reason)
         .unwrap_or_else(unknown_finish_reason);
 
-    let usage = resp.usage.map(|u| {
-        let input = u.input_tokens.unwrap_or(0);
-        let output = u.output_tokens.unwrap_or(0);
-        TokenUsage {
-            input_tokens: u.input_tokens,
-            output_tokens: u.output_tokens,
-            total_tokens: Some(input + output),
-        }
+    let usage = resp.usage.map(|u| TokenUsage {
+        input_tokens: u.input_tokens,
+        output_tokens: u.output_tokens,
+        total_tokens: u
+            .input_tokens
+            .zip(u.output_tokens)
+            .and_then(|(input, output)| input.checked_add(output)),
     });
 
     Ok(TextResult {
@@ -378,20 +382,21 @@ pub(super) fn anthropic_response_to_chat_result(
         }
     }
 
-    let finish_reason = resp
-        .stop_reason
-        .as_deref()
-        .map(map_stop_reason)
-        .unwrap_or_else(unknown_finish_reason);
+    let finish_reason = resp.stop_reason.as_deref().map(map_stop_reason);
+    let finish_reason = finish_reason_with_tool_override(
+        finish_reason,
+        parts
+            .iter()
+            .any(|part| matches!(part, MessagePart::ToolCall(_))),
+    );
 
-    let usage = resp.usage.map(|u| {
-        let input = u.input_tokens.unwrap_or(0);
-        let output = u.output_tokens.unwrap_or(0);
-        TokenUsage {
-            input_tokens: u.input_tokens,
-            output_tokens: u.output_tokens,
-            total_tokens: Some(input + output),
-        }
+    let usage = resp.usage.map(|u| TokenUsage {
+        input_tokens: u.input_tokens,
+        output_tokens: u.output_tokens,
+        total_tokens: u
+            .input_tokens
+            .zip(u.output_tokens)
+            .and_then(|(input, output)| input.checked_add(output)),
     });
 
     Ok(ChatResult {
@@ -459,6 +464,24 @@ mod tests {
         assert_eq!(usg.input_tokens, Some(10));
         assert_eq!(usg.output_tokens, Some(2));
         assert_eq!(usg.total_tokens, Some(12));
+    }
+
+    #[test]
+    fn anthropic_usage_does_not_invent_partial_total() {
+        let resp = AnthropicResponse {
+            id: None,
+            model: None,
+            content: vec![],
+            stop_reason: Some("end_turn".to_string()),
+            usage: Some(AnthropicUsage {
+                input_tokens: Some(10),
+                output_tokens: None,
+            }),
+        };
+
+        let result = anthropic_response_to_text_result(resp).unwrap();
+
+        assert_eq!(result.usage.unwrap().total_tokens, None);
     }
 
     #[test]
@@ -565,7 +588,7 @@ mod tests {
                 name: Some("get_weather".to_string()),
                 input: Some(serde_json::json!({"location": "Paris"})),
             }],
-            stop_reason: Some("tool_use".to_string()),
+            stop_reason: Some("end_turn".to_string()),
             usage: None,
         };
 

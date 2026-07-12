@@ -1,22 +1,30 @@
 /// Known Anthropic model IDs as of the library release.
 ///
 /// This list is opt-in. Pass any `&str` or `String` directly to
-/// [`AnthropicChatModel::new`](super::model::AnthropicChatModel::new) to use a model not listed here.
+/// [`AnthropicChatModel::new`](super::AnthropicChatModel::new) to use a model not listed here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnthropicModel {
     // ── Opus ──────────────────────────────────────
+    /// Claude Opus 4.6.
     Opus4_6,
+    /// Claude Opus 4.5.
     Opus4_5,
+    /// Claude Opus 4.1.
     Opus4_1,
     // ── Sonnet ──────────────────────────────────────
+    /// Claude Sonnet 4.6.
     Sonnet4_6,
+    /// Claude Sonnet 4.5.
     Sonnet4_5,
+    /// Claude Sonnet 4.0.
     Sonnet4_0,
     // ── Haiku ──────────────────────────────────────
+    /// Claude Haiku 4.5.
     Haiku4_5,
 }
 
 impl AnthropicModel {
+    /// Return the provider model identifier.
     pub fn as_str(self) -> &'static str {
         match self {
             // Opus

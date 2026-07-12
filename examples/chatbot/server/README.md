@@ -87,8 +87,9 @@ That transport sends UI messages like:
 ```
 
 The Axum handler deserializes that body directly into `MessageStreamRequest`.
-For this first version, the SDK adapter converts text parts and ignores other
-UI parts.
+The SDK adapter converts text parts, ignores tool/UI-only parts during history
+replay, and rejects client-supplied `system` roles. Only the server-owned
+`SYSTEM_PROMPT` becomes a privileged system instruction.
 
 ## Handler Flow
 
@@ -156,8 +157,8 @@ The example currently uses OpenAI:
 
 ```rust
 let state = AppState {
-    model: OpenAiChatModel::new(openai_api_key, model),
-    tools: demo_tool_registry(),
+    model: OpenAiChatModel::new(openai_api_key, model)?,
+    tools: demo_tool_registry()?,
 };
 ```
 
@@ -185,7 +186,7 @@ ToolRegistry::new().register(
         let order_id = call.input["order_id"].as_str().unwrap_or_default();
         Ok(json!({ "order_id": order_id, "status": "shipped" }))
     },
-)
+)?
 ```
 
 Keep browser input untrusted. The server should own the tool registry,
@@ -211,7 +212,8 @@ usually add:
 - Tool timeouts and cancellation.
 - Persistent canonical chat history.
 - Audit logs for tool calls and outputs.
-- Better error redaction.
+- A custom `MessageStreamErrorMapper` that logs internal failures while
+  preserving the SDK's redacted browser/model output.
 - CORS policy if the web app is served from another origin.
 
 The important boundary should stay the same: keep provider-neutral model and

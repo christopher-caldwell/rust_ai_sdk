@@ -12,6 +12,9 @@ build:
 fmt:
     cargo fmt --all
 
+fmt-check:
+    cargo fmt --all -- --check
+
 # Run clippy for linting
 clippy:
     cargo clippy --all-targets --all-features -- -D warnings
@@ -29,14 +32,16 @@ check-examples:
 
 # Check important crate feature combinations
 check-features:
-    cargo check --no-default-features
-    cargo check --no-default-features --features openai
-    cargo check --no-default-features --features anthropic
-    cargo check --no-default-features --features gemini
-    cargo check --no-default-features --features providers-all
-    cargo check --no-default-features --features providers-all,streaming
-    cargo check --no-default-features --features message-stream
-    cargo check --all-features
+    cargo test --no-default-features
+    cargo test --no-default-features --features openai
+    cargo test --no-default-features --features anthropic
+    cargo test --no-default-features --features gemini
+    cargo test --no-default-features --features providers-all
+    cargo test --no-default-features --features providers-all,streaming
+    cargo test --no-default-features --features message-stream
+    cargo test --all-features
+    RUSTDOCFLAGS="-D warnings" cargo doc --no-default-features --no-deps
+    RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
 
 # Build the chatbot web example
 check-chatbot-web:
@@ -44,13 +49,21 @@ check-chatbot-web:
 
 # Build public rustdoc without dependencies
 doc:
-    cargo doc --all-features --no-deps
+    RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps
+
+# Verify crate contents and release metadata without requiring a clean worktree
+package-check:
+    ./scripts/publish-crate.sh --check-only --allow-dirty
 
 # Validate the public API surface and examples from the repository root
 check-public: test check-examples doc
 
 # Format and lint the codebase
-lint: fmt clippy
+lint: fmt-check clippy
+
+# Prepare, validate, commit, publish, and tag a release from a clean branch
+release:
+    ./scripts/publish-crate.sh --release
 
 # Prepare a local release by generating version and changelog updates
 release-prepare:
@@ -62,4 +75,4 @@ publish-dry:
 
 # Publish the package from the committed release changes
 publish:
-    ./scripts/publish-crate.sh --publish --yes
+    ./scripts/publish-crate.sh --publish

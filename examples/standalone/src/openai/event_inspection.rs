@@ -19,14 +19,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set");
     let model_id =
         std::env::var("OPENAI_MODEL").unwrap_or_else(|_| OpenAiModel::Gpt5_4Nano.to_string());
-    let model = OpenAiChatModel::new(api_key, model_id);
+    let model = OpenAiChatModel::new(api_key, model_id)?;
 
     let request = TextRequest::builder()
         .prompt("Call get_weather for Paris. Do not answer from memory.")
         .tools(vec![weather_tool()])
         .tool_choice(ToolChoice::required("get_weather"))
         .max_output_tokens(300)
-        .build();
+        .build()?;
 
     let mut stream = stream_text(&model, request).await?;
     while let Some(event) = stream.next().await {

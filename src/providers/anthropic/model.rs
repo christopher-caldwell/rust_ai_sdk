@@ -5,25 +5,42 @@ use crate::core::{
     model::LanguageModel,
     request::TextRequest,
     result::{ChatResult, TextResult},
-    stream::TextEventStream,
 };
+#[cfg(feature = "streaming")]
+use crate::core::{model::StreamingLanguageModel, stream::TextEventStream};
 
+use super::super::ProviderHttpConfig;
 use super::client::AnthropicClient;
 
 #[derive(Clone)]
+/// Anthropic implementation of the provider-neutral language-model interface.
 pub struct AnthropicChatModel {
     client: AnthropicClient,
     model: String,
 }
 
 impl AnthropicChatModel {
-    pub fn new(api_key: String, model: impl Into<String>) -> Self {
-        Self {
-            client: AnthropicClient::new(api_key),
+    /// Construct an Anthropic model with the default provider endpoint and HTTP client.
+    pub fn new(api_key: String, model: impl Into<String>) -> Result<Self, SdkError> {
+        Ok(Self {
+            client: AnthropicClient::new(api_key)?,
             model: model.into(),
-        }
+        })
     }
 
+    /// Construct an Anthropic model with application-defined HTTP configuration.
+    pub fn with_config(
+        api_key: String,
+        model: impl Into<String>,
+        config: ProviderHttpConfig,
+    ) -> Result<Self, SdkError> {
+        Ok(Self {
+            client: AnthropicClient::with_config(api_key, config)?,
+            model: model.into(),
+        })
+    }
+
+    /// Generate a structured assistant result that can contain tool calls.
     pub async fn generate_chat(&self, request: TextRequest) -> Result<ChatResult, SdkError> {
         self.client.generate_chat(&self.model, &request).await
     }
@@ -39,15 +56,19 @@ impl LanguageModel for AnthropicChatModel {
         self.client.generate_chat(&self.model, &request).await
     }
 
-    async fn stream(&self, request: TextRequest) -> Result<TextEventStream, SdkError> {
-        self.client.stream(&self.model, &request).await
-    }
-
     fn model_id(&self) -> &str {
         &self.model
     }
 
     fn provider_name(&self) -> &str {
         "anthropic"
+    }
+}
+
+#[cfg(feature = "streaming")]
+#[async_trait]
+impl StreamingLanguageModel for AnthropicChatModel {
+    async fn stream(&self, request: TextRequest) -> Result<TextEventStream, SdkError> {
+        self.client.stream(&self.model, &request).await
     }
 }

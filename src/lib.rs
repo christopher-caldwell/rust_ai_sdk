@@ -3,10 +3,8 @@
 //! The crate is organized around a small mental model:
 //!
 //! - [`LanguageModel`](crate::core::model::LanguageModel) is the provider-neutral
-//!   interface implemented by provider wrappers such as
-//!   [`OpenAiChatModel`](crate::providers::openai::OpenAiChatModel),
-//!   [`AnthropicChatModel`](crate::providers::anthropic::AnthropicChatModel), and
-//!   [`GeminiChatModel`](crate::providers::gemini::GeminiChatModel).
+//!   interface implemented by provider wrappers such as `OpenAiChatModel`,
+//!   `AnthropicChatModel`, and `GeminiChatModel` when their features are enabled.
 //! - [`TextRequest`](crate::core::request::TextRequest) holds messages, generation
 //!   options, tool definitions, and tool choice policy.
 //! - [`StreamEvent`](crate::core::stream::StreamEvent) is the shared streaming event
@@ -20,12 +18,12 @@
 //! Most applications should start with [`prelude`] plus one provider module:
 //!
 //! ```no_run
+//! # #[cfg(feature = "openai")]
+//! # async fn example() -> Result<(), another_ai_sdk::prelude::SdkError> {
 //! use another_ai_sdk::prelude::*;
 //! use another_ai_sdk::providers::openai::{OpenAiChatModel, OpenAiModel};
 //!
-//! # #[tokio::main]
-//! # async fn main() -> Result<(), SdkError> {
-//! let model = OpenAiChatModel::new("api-key".to_string(), OpenAiModel::Gpt4_1Mini);
+//! let model = OpenAiChatModel::new("api-key".to_string(), OpenAiModel::Gpt4_1Mini)?;
 //! let request = TextRequest::prompt("Write one sentence about Rust ownership.");
 //! let result = generate_text(&model, request).await?;
 //! println!("{}", result.text);
@@ -38,26 +36,36 @@
 //! framework-independent request composition and byte-stream helpers through
 //! [`prelude`].
 
+#![warn(missing_docs)]
+
+/// Provider-neutral messages, requests, results, streams, tools, and errors.
 pub mod core;
+/// Built-in OpenAI, Anthropic, and Gemini provider integrations.
 pub mod providers;
+/// High-level generation, streaming, turn, and tool-loop helpers.
 pub mod runtime;
 
+/// Common imports for application code.
 pub mod prelude {
     pub use crate::core::{
-        error::SdkError,
+        error::{SdkError, TransportErrorKind},
         message::{Message, MessagePart, Role, ToolCall, ToolOutput, ToolResult},
-        model::LanguageModel,
+        model::{LanguageModel, StreamingLanguageModel},
         request::{TextRequest, TextRequestBuilder},
         result::{ChatResult, TextResult},
         stream::{StreamEvent, TextEventStream},
         tool::{ToolChoice, ToolDefinition},
         types::{FinishReason, ResponseMetadata, Usage},
     };
+    #[cfg(any(feature = "openai", feature = "anthropic", feature = "gemini"))]
+    pub use crate::providers::ProviderHttpConfig;
     #[cfg(feature = "message-stream")]
     pub use crate::runtime::message_stream::{
         MESSAGE_STREAM_CACHE_CONTROL, MESSAGE_STREAM_CONTENT_TYPE, MESSAGE_STREAM_PROTOCOL_HEADER,
-        MESSAGE_STREAM_PROTOCOL_VERSION, MessageStreamInputError, MessageStreamOptions,
-        MessageStreamRequest, compose_text_request, messages_to_sdk_messages, stream_text_messages,
+        MESSAGE_STREAM_PROTOCOL_VERSION, MessageStreamErrorMapper, MessageStreamInputError,
+        MessageStreamOptions, MessageStreamRequest, RedactedMessageStreamErrors,
+        compose_text_request, messages_to_sdk_messages, stream_text_messages,
+        stream_text_messages_with_error_mapper,
     };
     pub use crate::runtime::{
         generate::{generate_chat, generate_text},

@@ -9,11 +9,11 @@ use futures_util::StreamExt;
 use std::io::Write;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
     let model_id =
         std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| AnthropicModel::Haiku4_5.to_string());
-    let model = AnthropicChatModel::new(api_key, model_id);
+    let model = AnthropicChatModel::new(api_key, model_id)?;
 
     let request = TextRequest::prompt("Write a short haiku about the Rust programming language");
 
@@ -39,4 +39,6 @@ async fn main() {
             _ => {}
         }
     }
+
+    Ok(())
 }

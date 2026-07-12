@@ -13,15 +13,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY must be set");
     let model_id = std::env::var("GEMINI_MODEL")
         .unwrap_or_else(|_| GeminiModel::Gemini2_5FlashLite.to_string());
-    let model = GeminiChatModel::new(api_key, model_id);
+    let model = GeminiChatModel::new(api_key, model_id)?;
 
-    let tools = weather_tools();
+    let tools = weather_tools()?;
     let mut request = TextRequest::builder()
         .prompt("What is the weather in Paris? Use the get_weather tool before answering.")
         .max_output_tokens(500)
         .tools(tools.definitions())
         .tool_choice(ToolChoice::required("get_weather"))
-        .build();
+        .build()?;
 
     loop {
         let base_request = request.clone();
@@ -54,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn weather_tools() -> ToolRegistry {
+fn weather_tools() -> Result<ToolRegistry, SdkError> {
     ToolRegistry::new().register(weather_tool_definition(), |call| async move {
         let location = call
             .input

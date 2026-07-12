@@ -1,3 +1,4 @@
+#[cfg(any(test, feature = "gemini"))]
 use serde_json::Value;
 
 use crate::core::{tool::ToolChoice, types::FinishReason};
@@ -38,6 +39,7 @@ pub fn unknown_finish_reason() -> FinishReason {
     FinishReason::Other("unknown".to_string())
 }
 
+#[cfg(any(test, feature = "gemini"))]
 pub fn remove_additional_properties(schema: Value) -> Value {
     match schema {
         Value::Object(mut map) => {

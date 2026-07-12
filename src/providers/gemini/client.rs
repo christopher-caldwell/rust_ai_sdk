@@ -9,6 +9,7 @@ use serde::de::DeserializeOwned;
 #[cfg(feature = "streaming")]
 use super::types::{gemini_tool_metadata, map_finish_reason};
 use super::{
+    super::ProviderHttpConfig,
     error::{GeminiClientError, truncate_body},
     types::{
         GeminiErrorResponse, GenerateContentResponse, gemini_response_to_chat_result,
@@ -17,9 +18,11 @@ use super::{
 };
 #[cfg(feature = "streaming")]
 use crate::core::stream::StreamEvent;
+#[cfg(feature = "streaming")]
 use crate::core::stream::TextEventStream;
 #[cfg(feature = "streaming")]
 use crate::core::types::{FinishReason, ResponseMetadata, Usage as TokenUsage};
+use crate::providers::transport::read_bounded_body;
 #[cfg(feature = "streaming")]
 use eventsource_stream::Eventsource;
 #[cfg(feature = "streaming")]
@@ -36,12 +39,20 @@ pub struct GeminiClient {
 }
 
 impl GeminiClient {
-    pub fn new(api_key: String) -> Self {
-        Self {
+    pub fn new(api_key: String) -> Result<Self, SdkError> {
+        Self::with_config(api_key, ProviderHttpConfig::new())
+    }
+
+    pub(crate) fn with_config(
+        api_key: String,
+        config: ProviderHttpConfig,
+    ) -> Result<Self, SdkError> {
+        let (http, base_url) = config.resolve("Gemini", DEFAULT_BASE_URL)?;
+        Ok(Self {
             api_key,
-            base_url: DEFAULT_BASE_URL.to_string(),
-            http: reqwest::Client::new(),
-        }
+            base_url,
+            http,
+        })
     }
 
     #[allow(dead_code)]
@@ -120,8 +131,7 @@ impl GeminiClient {
 
         let status = response.status();
         if !status.is_success() {
-            let bytes = response
-                .bytes()
+            let bytes = read_bounded_body(response, ERROR_BODY_SNIPPET_LEN + 1)
                 .await
                 .map_err(|e| SdkError::from(GeminiClientError::Reqwest(e)))?;
             return Err(provider_error_from_bytes(status, &bytes));
@@ -156,7 +166,14 @@ impl GeminiClient {
                         Some((items, (events, acc, false)))
                     }
                     None => {
-                        let items = acc.finish_if_needed();
+                        let items = if acc.finished_emitted {
+                            vec![]
+                        } else {
+                            vec![Err(SdkError::stream_terminated(
+                                Some("gemini"),
+                                "SSE stream ended before a terminal finish event",
+                            ))]
+                        };
                         Some((items, (events, acc, true)))
                     }
                 }
@@ -165,17 +182,6 @@ impl GeminiClient {
         .flat_map(futures_util::stream::iter);
 
         Ok(Box::pin(stream))
-    }
-
-    #[cfg(not(feature = "streaming"))]
-    pub async fn stream(
-        &self,
-        _model: &str,
-        _request: &TextRequest,
-    ) -> Result<TextEventStream, SdkError> {
-        Err(SdkError::Validation(
-            "Gemini streaming requires the `streaming` feature.".to_string(),
-        ))
     }
 
     fn generate_url(&self, model: &str) -> String {
@@ -202,15 +208,17 @@ async fn send_json_request(
 
 async fn decode_response_bytes(response: reqwest::Response) -> Result<Vec<u8>, SdkError> {
     let status = response.status();
+    if !status.is_success() {
+        let bytes = read_bounded_body(response, ERROR_BODY_SNIPPET_LEN + 1)
+            .await
+            .map_err(|e| SdkError::from(GeminiClientError::Reqwest(e)))?;
+        return Err(provider_error_from_bytes(status, &bytes));
+    }
+
     let bytes = response
         .bytes()
         .await
         .map_err(|e| SdkError::from(GeminiClientError::Reqwest(e)))?;
-
-    if !status.is_success() {
-        return Err(provider_error_from_bytes(status, &bytes));
-    }
-
     Ok(bytes.to_vec())
 }
 
@@ -347,6 +355,10 @@ fn process_stream_response(
         {
             acc.finish_reason = Some(map_finish_reason(&reason));
         }
+    }
+
+    if acc.finish_reason.is_some() {
+        events.extend(acc.finish_if_needed());
     }
 
     events

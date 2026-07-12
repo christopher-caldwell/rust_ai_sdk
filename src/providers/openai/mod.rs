@@ -1,4 +1,5 @@
-pub mod model;
+mod model;
+/// OpenAI model identifiers.
 pub mod models;
 
 pub(crate) mod client;

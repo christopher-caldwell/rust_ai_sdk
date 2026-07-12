@@ -1,4 +1,12 @@
-use std::{collections::VecDeque, convert::Infallible, fmt};
+use std::{
+    collections::VecDeque,
+    convert::Infallible,
+    fmt,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 use async_stream::stream;
 use bytes::Bytes;
@@ -9,8 +17,9 @@ use serde_json::{Value, json};
 
 use crate::{
     core::{
+        error::SdkError,
         message::{Message, MessagePart, ToolCall},
-        model::LanguageModel,
+        model::StreamingLanguageModel,
         request::TextRequest,
         stream::StreamEvent,
         tool::ToolDefinition,
@@ -41,34 +50,42 @@ pub struct MessageStreamRequest {
     messages: Vec<MessageStreamMessage>,
 }
 
-/// Error returned when inbound UI messages do not match this adapter's
-/// text-only ingestion contract.
+/// Error returned when inbound UI messages violate this adapter's trust contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MessageStreamInputError {
-    UnsupportedPart {
-        message_index: usize,
-        part_index: usize,
-    },
+    /// A client supplied a role that is not accepted by the adapter.
     UnknownRole {
+        /// Zero-based index of the message.
         message_index: usize,
+        /// Rejected role value.
         role: String,
+    },
+    /// A client attempted to supply a privileged system instruction.
+    ClientSystemRole {
+        /// Zero-based index of the rejected message.
+        message_index: usize,
+    },
+    /// The converted SDK request violated a request invariant.
+    InvalidRequest {
+        /// Provider-neutral validation message.
+        message: String,
     },
 }
 
 impl fmt::Display for MessageStreamInputError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnsupportedPart {
-                message_index,
-                part_index,
-            } => write!(
-                f,
-                "message {message_index} part {part_index} is not supported by the text-only message stream adapter",
-            ),
             Self::UnknownRole {
                 message_index,
                 role,
             } => write!(f, "message {message_index} has unsupported role '{role}'",),
+            Self::ClientSystemRole { message_index } => write!(
+                f,
+                "message {message_index} uses the system role; system instructions must be supplied by the server",
+            ),
+            Self::InvalidRequest { message } => {
+                write!(f, "invalid message-stream request: {message}")
+            }
         }
     }
 }
@@ -95,9 +112,14 @@ enum MessageStreamPart {
 /// Runtime limits and model options used while composing and streaming messages.
 #[derive(Debug, Clone, Copy)]
 pub struct MessageStreamOptions {
+    /// Maximum number of model/tool continuation steps.
     pub max_model_steps: usize,
+    /// Maximum provider output tokens per model step.
     pub max_output_tokens: u32,
+    /// Provider-neutral sampling temperature.
     pub temperature: f32,
+    /// Maximum number of independent tool calls executed concurrently.
+    pub max_parallel_tools: usize,
 }
 
 impl Default for MessageStreamOptions {
@@ -106,7 +128,39 @@ impl Default for MessageStreamOptions {
             max_model_steps: 5,
             max_output_tokens: 800,
             temperature: 0.7,
+            max_parallel_tools: 8,
         }
+    }
+}
+
+/// Maps internal SDK failures to safe browser- and model-visible values.
+///
+/// The mapper runs at the HTTP/UI protocol boundary. Implementations may log
+/// the detailed [`SdkError`] before returning a redacted public value.
+pub trait MessageStreamErrorMapper: Send + Sync {
+    /// Map a model or stream failure to browser-visible text.
+    fn stream_error(&self, error: &SdkError) -> String;
+
+    /// Map a tool failure to the value shown to the browser and sent to the model.
+    fn tool_error(&self, call: &ToolCall, error: &SdkError) -> Value;
+}
+
+/// Safe default mapping that does not expose provider or application details.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RedactedMessageStreamErrors;
+
+impl MessageStreamErrorMapper for RedactedMessageStreamErrors {
+    fn stream_error(&self, _error: &SdkError) -> String {
+        "The model request could not be completed.".to_string()
+    }
+
+    fn tool_error(&self, _call: &ToolCall, _error: &SdkError) -> Value {
+        json!({
+            "error": {
+                "code": "tool_execution_failed",
+                "message": "The tool could not be completed."
+            }
+        })
     }
 }
 
@@ -119,12 +173,15 @@ pub fn compose_text_request(
 ) -> Result<TextRequest, MessageStreamInputError> {
     let messages = messages_to_sdk_messages(request, system_prompt)?;
 
-    Ok(TextRequest::builder()
+    TextRequest::builder()
         .messages(messages)
         .max_output_tokens(options.max_output_tokens)
         .temperature(options.temperature)
         .tools(tools.into_iter().collect())
-        .build())
+        .build()
+        .map_err(|error| MessageStreamInputError::InvalidRequest {
+            message: error.message().to_string(),
+        })
 }
 
 /// Stream a UI-message response from a provider model and application-owned tools.
@@ -135,9 +192,30 @@ pub fn stream_text_messages<M>(
     options: MessageStreamOptions,
 ) -> impl Stream<Item = MessageStreamChunk> + Send + 'static
 where
-    M: LanguageModel + Send + Sync + 'static,
+    M: StreamingLanguageModel + Send + Sync + 'static,
 {
-    stream_message_response(model, request, tools, options)
+    stream_text_messages_with_error_mapper(
+        model,
+        request,
+        tools,
+        options,
+        RedactedMessageStreamErrors,
+    )
+}
+
+/// Stream a UI-message response with an application-defined public error mapper.
+pub fn stream_text_messages_with_error_mapper<M, E>(
+    model: M,
+    request: TextRequest,
+    tools: ToolRegistry,
+    options: MessageStreamOptions,
+    error_mapper: E,
+) -> impl Stream<Item = MessageStreamChunk> + Send + 'static
+where
+    M: StreamingLanguageModel + Send + Sync + 'static,
+    E: MessageStreamErrorMapper + 'static,
+{
+    stream_message_response(model, request, tools, options, Arc::new(error_mapper))
 }
 
 fn stream_message_response<M>(
@@ -145,38 +223,104 @@ fn stream_message_response<M>(
     mut request: TextRequest,
     tools: ToolRegistry,
     options: MessageStreamOptions,
+    error_mapper: Arc<dyn MessageStreamErrorMapper>,
 ) -> impl Stream<Item = MessageStreamChunk> + Send + 'static
 where
-    M: LanguageModel + Send + Sync + 'static,
+    M: StreamingLanguageModel + Send + Sync + 'static,
 {
     stream! {
         yield start_message_chunk();
 
         for step_index in 0..options.max_model_steps {
-            let model_step = match run_model_step(&model, request.clone(), step_index).await {
-                Ok(model_step) => model_step,
-                Err(error_text) => {
-                    for chunk in error_chunks(error_text) {
+            yield sse(json!({ "type": "start-step" }));
+
+            let sdk_stream = match stream_text(&model, request.clone()).await {
+                Ok(stream) => stream,
+                Err(error) => {
+                    for chunk in error_chunks(error_mapper.stream_error(&error)) {
                         yield chunk;
                     }
                     return;
                 }
             };
 
-            for chunk in model_step.chunks {
-                yield chunk;
+            let text_part_id = format!("text_{step_index}");
+            let mut turn = TurnAccumulator::default();
+            let mut text_started = false;
+            let mut fallback_tool_ids = VecDeque::new();
+            let mut finished = false;
+            futures_util::pin_mut!(sdk_stream);
+
+            while let Some(event) = sdk_stream.next().await {
+                let event = match event {
+                    Ok(event) => event,
+                    Err(error) => {
+                        for chunk in error_chunks(error_mapper.stream_error(&error)) {
+                            yield chunk;
+                        }
+                        return;
+                    }
+                };
+
+                track_fallback_tool_id(&event, &mut fallback_tool_ids);
+                let is_finished = matches!(event, StreamEvent::Finished { .. });
+                for chunk in chunks_for_sdk_event(event.clone(), &text_part_id, &mut text_started) {
+                    yield chunk;
+                }
+                turn.push_event(event);
+
+                if is_finished {
+                    finished = true;
+                    break;
+                }
             }
 
-            if model_step.tool_calls.is_empty() {
+            if !finished {
+                let error = SdkError::stream_terminated(
+                    Some(model.provider_name()),
+                    "stream ended before a terminal Finished event",
+                );
+                for chunk in error_chunks(error_mapper.stream_error(&error)) {
+                    yield chunk;
+                }
+                return;
+            }
+
+            if text_started {
+                yield sse(json!({ "type": "text-end", "id": text_part_id }));
+            }
+
+            let accumulated_turn = match turn.into_accumulated() {
+                Ok(turn) => turn,
+                Err(error) => {
+                    for chunk in error_chunks(error_mapper.stream_error(&error)) {
+                        yield chunk;
+                    }
+                    return;
+                }
+            };
+            let finish_reason = accumulated_turn.finish_reason.clone();
+            let assistant_parts =
+                normalize_tool_call_ids(accumulated_turn.parts, fallback_tool_ids);
+            let tool_calls = tool_calls_from_parts(&assistant_parts);
+            yield sse(json!({ "type": "finish-step" }));
+
+            if tool_calls.is_empty() {
                 yield sse(json!({
                     "type": "finish",
-                    "finishReason": finish_reason_to_ai_sdk(&model_step.finish_reason),
+                    "finishReason": finish_reason_to_ai_sdk(&finish_reason),
                 }));
                 yield done();
                 return;
             }
 
-            let tool_step = execute_tool_calls(&tools, &model_step.tool_calls).await;
+            let tool_step = execute_tool_calls(
+                &tools,
+                &tool_calls,
+                options.max_parallel_tools,
+                Arc::clone(&error_mapper),
+            )
+            .await;
             let ToolExecutionStep {
                 chunks,
                 results,
@@ -186,7 +330,7 @@ where
                 yield chunk;
             }
 
-            request = build_continuation_request(request, model_step.assistant_parts, results);
+            request = build_continuation_request(request, assistant_parts, results);
         }
 
         yield sse(json!({
@@ -201,88 +345,9 @@ where
     }
 }
 
-struct ModelStep {
-    chunks: Vec<MessageStreamChunk>,
-    assistant_parts: Vec<MessagePart>,
-    tool_calls: Vec<ToolCall>,
-    finish_reason: FinishReason,
-}
-
 struct ToolExecutionStep {
     chunks: Vec<MessageStreamChunk>,
     results: Vec<(String, Value)>,
-}
-
-async fn run_model_step<M>(
-    model: &M,
-    request: TextRequest,
-    step_index: usize,
-) -> Result<ModelStep, String>
-where
-    M: LanguageModel + Send + Sync + 'static,
-{
-    let mut chunks = vec![sse(json!({ "type": "start-step" }))];
-    let sdk_stream = stream_text(model, request)
-        .await
-        .map_err(|error| format!("SDK stream failed: {error}"))?;
-    let text_part_id = format!("text_{step_index}");
-    let streamed_turn = collect_streamed_turn(sdk_stream, &text_part_id, &mut chunks).await?;
-
-    if streamed_turn.text_started {
-        chunks.push(sse(json!({ "type": "text-end", "id": text_part_id })));
-    }
-
-    let accumulated_turn = streamed_turn.turn.into_accumulated();
-    let finish_reason = accumulated_turn.finish_reason.clone();
-    let assistant_parts =
-        normalize_tool_call_ids(accumulated_turn.parts, streamed_turn.fallback_tool_ids);
-    let tool_calls = tool_calls_from_parts(&assistant_parts);
-
-    chunks.push(sse(json!({ "type": "finish-step" })));
-
-    Ok(ModelStep {
-        chunks,
-        assistant_parts,
-        tool_calls,
-        finish_reason,
-    })
-}
-
-struct StreamedTurn {
-    turn: TurnAccumulator,
-    text_started: bool,
-    fallback_tool_ids: VecDeque<String>,
-}
-
-async fn collect_streamed_turn(
-    sdk_stream: crate::core::stream::TextEventStream,
-    text_part_id: &str,
-    chunks: &mut Vec<MessageStreamChunk>,
-) -> Result<StreamedTurn, String> {
-    let mut turn = TurnAccumulator::default();
-    let mut text_started = false;
-    let mut fallback_tool_ids = VecDeque::new();
-    futures_util::pin_mut!(sdk_stream);
-
-    while let Some(event) = sdk_stream.next().await {
-        let event = event.map_err(|error| format!("SDK event failed: {error}"))?;
-
-        track_fallback_tool_id(&event, &mut fallback_tool_ids);
-
-        let is_finished = matches!(event, StreamEvent::Finished { .. });
-        turn.push_event(event.clone());
-        chunks.extend(chunks_for_sdk_event(event, text_part_id, &mut text_started));
-
-        if is_finished {
-            break;
-        }
-    }
-
-    Ok(StreamedTurn {
-        turn,
-        text_started,
-        fallback_tool_ids,
-    })
 }
 
 fn track_fallback_tool_id(event: &StreamEvent, fallback_tool_ids: &mut VecDeque<String>) {
@@ -293,22 +358,38 @@ fn track_fallback_tool_id(event: &StreamEvent, fallback_tool_ids: &mut VecDeque<
     }
 }
 
-async fn execute_tool_calls(tools: &ToolRegistry, tool_calls: &[ToolCall]) -> ToolExecutionStep {
-    let mut chunks = Vec::new();
-    let mut results = Vec::new();
+async fn execute_tool_calls(
+    tools: &ToolRegistry,
+    tool_calls: &[ToolCall],
+    max_parallel_tools: usize,
+    error_mapper: Arc<dyn MessageStreamErrorMapper>,
+) -> ToolExecutionStep {
+    let executions = futures_util::stream::iter(tool_calls.iter().cloned())
+        .map(|call| {
+            let tools = tools.clone();
+            let error_mapper = Arc::clone(&error_mapper);
+            async move {
+                let output = match tools.execute(&call).await {
+                    Ok(output) => output,
+                    Err(error) => error_mapper.tool_error(&call, &error),
+                };
+                (call, output)
+            }
+        })
+        .buffered(max_parallel_tools.max(1))
+        .collect::<Vec<_>>()
+        .await;
 
-    for call in tool_calls {
-        let output = match tools.execute(call).await {
-            Ok(output) => output,
-            Err(error) => json!({ "error": error.to_string() }),
-        };
+    let mut chunks = Vec::with_capacity(executions.len());
+    let mut results = Vec::with_capacity(executions.len());
 
+    for (call, output) in executions {
         chunks.push(sse(json!({
             "type": "tool-output-available",
-            "toolCallId": &call.id,
+            "toolCallId": call.id,
             "output": &output,
         })));
-        results.push((call.id.clone(), output));
+        results.push((call.id, output));
     }
 
     ToolExecutionStep { chunks, results }
@@ -338,14 +419,13 @@ pub fn messages_to_sdk_messages(
 
     for (message_index, message) in request.messages.into_iter().enumerate() {
         let role = sdk_role_for_message(&message.role, message_index)?;
-        let text = text_for_message_parts(message.parts, message_index)?;
+        let text = text_for_message_parts(message.parts);
 
         if text.trim().is_empty() {
             continue;
         }
 
         match role {
-            MessageStreamRole::System => sdk_messages.push(Message::system(text)),
             MessageStreamRole::User => sdk_messages.push(Message::user(text)),
             MessageStreamRole::Assistant => sdk_messages.push(Message::assistant(text)),
         }
@@ -359,7 +439,7 @@ fn sdk_role_for_message(
     message_index: usize,
 ) -> Result<MessageStreamRole, MessageStreamInputError> {
     match role {
-        "system" => Ok(MessageStreamRole::System),
+        "system" => Err(MessageStreamInputError::ClientSystemRole { message_index }),
         "user" => Ok(MessageStreamRole::User),
         "assistant" => Ok(MessageStreamRole::Assistant),
         _ => Err(MessageStreamInputError::UnknownRole {
@@ -369,30 +449,21 @@ fn sdk_role_for_message(
     }
 }
 
-fn text_for_message_parts(
-    parts: Vec<MessageStreamPart>,
-    message_index: usize,
-) -> Result<String, MessageStreamInputError> {
+fn text_for_message_parts(parts: Vec<MessageStreamPart>) -> String {
     let mut text_parts = Vec::new();
 
-    for (part_index, part) in parts.into_iter().enumerate() {
+    for part in parts {
         match part {
             MessageStreamPart::Text { text } => text_parts.push(text),
-            MessageStreamPart::Other => {
-                return Err(MessageStreamInputError::UnsupportedPart {
-                    message_index,
-                    part_index,
-                });
-            }
+            MessageStreamPart::Other => {}
         }
     }
 
-    Ok(text_parts.join("\n"))
+    text_parts.join("\n")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MessageStreamRole {
-    System,
     User,
     Assistant,
 }
@@ -505,11 +576,14 @@ fn done() -> MessageStreamChunk {
 }
 
 fn message_id() -> String {
+    static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or_default();
-    format!("msg_{millis}")
+    let sequence = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    format!("msg_{millis}_{}_{sequence}", std::process::id())
 }
 
 fn tool_call_id(id: String, index: u32) -> String {
@@ -536,7 +610,7 @@ mod tests {
     use crate::core::{
         error::SdkError,
         message::{Role, ToolCall},
-        model::LanguageModel,
+        model::{LanguageModel, StreamingLanguageModel},
         result::{ChatResult, TextResult},
         types::{ResponseMetadata, Usage},
     };
@@ -548,7 +622,7 @@ mod tests {
     }
 
     #[test]
-    fn request_rejects_unsupported_parts() {
+    fn request_ignores_non_text_ui_parts() {
         let request: MessageStreamRequest = serde_json::from_value(json!({
             "messages": [{
                 "role": "user",
@@ -560,39 +634,48 @@ mod tests {
         }))
         .unwrap();
 
-        let error = messages_to_sdk_messages(request, "System").unwrap_err();
+        let messages = messages_to_sdk_messages(request, "System").unwrap();
 
-        assert_eq!(
-            error,
-            MessageStreamInputError::UnsupportedPart {
-                message_index: 0,
-                part_index: 1,
-            }
-        );
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[1].text(), Some("Hello"));
     }
 
     #[test]
-    fn messages_convert_text_parts_and_system_prompt() {
+    fn messages_convert_text_parts_and_server_system_prompt() {
         let request: MessageStreamRequest = serde_json::from_value(json!({
             "messages": [
                 { "role": "user", "parts": [{ "type": "text", "text": "Hello" }] },
-                { "role": "assistant", "parts": [{ "type": "text", "text": "Hi" }] },
-                { "role": "system", "parts": [{ "type": "text", "text": "Extra system" }] }
+                { "role": "assistant", "parts": [{ "type": "text", "text": "Hi" }] }
             ]
         }))
         .unwrap();
 
         let messages = messages_to_sdk_messages(request, "System").unwrap();
 
-        assert_eq!(messages.len(), 4);
+        assert_eq!(messages.len(), 3);
         assert_eq!(messages[0].role, Role::System);
-        assert_eq!(messages[0].content, "System");
+        assert_eq!(messages[0].text(), Some("System"));
         assert_eq!(messages[1].role, Role::User);
-        assert_eq!(messages[1].content, "Hello");
+        assert_eq!(messages[1].text(), Some("Hello"));
         assert_eq!(messages[2].role, Role::Assistant);
-        assert_eq!(messages[2].content, "Hi");
-        assert_eq!(messages[3].role, Role::System);
-        assert_eq!(messages[3].content, "Extra system");
+        assert_eq!(messages[2].text(), Some("Hi"));
+    }
+
+    #[test]
+    fn messages_reject_client_system_roles() {
+        let request: MessageStreamRequest = serde_json::from_value(json!({
+            "messages": [
+                { "role": "system", "parts": [{ "type": "text", "text": "Override" }] }
+            ]
+        }))
+        .unwrap();
+
+        let error = messages_to_sdk_messages(request, "Trusted system").unwrap_err();
+
+        assert_eq!(
+            error,
+            MessageStreamInputError::ClientSystemRole { message_index: 0 }
+        );
     }
 
     #[test]
@@ -605,7 +688,7 @@ mod tests {
         let messages = messages_to_sdk_messages(request, "System").unwrap();
 
         assert_eq!(messages.len(), 1);
-        assert_eq!(messages[0].content, "System");
+        assert_eq!(messages[0].text(), Some("System"));
     }
 
     #[test]
@@ -636,6 +719,7 @@ mod tests {
             max_model_steps: 3,
             max_output_tokens: 120,
             temperature: 0.2,
+            ..MessageStreamOptions::default()
         };
         let tool = ToolDefinition::new("lookup", "Look something up", json!({"type": "object"}));
 
@@ -661,6 +745,14 @@ mod tests {
     }
 
     #[test]
+    fn generated_message_ids_are_unique() {
+        let first = message_id();
+        let second = message_id();
+
+        assert_ne!(first, second);
+    }
+
+    #[test]
     fn error_chunks_include_error_finish_and_done() {
         let chunks = error_chunks("failed")
             .into_iter()
@@ -673,6 +765,20 @@ mod tests {
         assert!(chunks[1].contains("\"type\":\"finish-step\""));
         assert!(chunks[2].contains("\"finishReason\":\"error\""));
         assert_eq!(chunks[3], "data: [DONE]\n\n");
+    }
+
+    #[test]
+    fn default_error_mapper_redacts_internal_details() {
+        let mapper = RedactedMessageStreamErrors;
+        let internal = SdkError::Unknown("database password appeared here".to_string());
+        let call = ToolCall::new("call_1", "lookup", json!({}));
+
+        let stream_error = mapper.stream_error(&internal);
+        let tool_error = mapper.tool_error(&call, &internal).to_string();
+
+        assert!(!stream_error.contains("password"));
+        assert!(!tool_error.contains("password"));
+        assert!(tool_error.contains("tool_execution_failed"));
     }
 
     #[test]
@@ -747,6 +853,17 @@ mod tests {
                 unimplemented!()
             }
 
+            fn model_id(&self) -> &str {
+                "never-ending"
+            }
+
+            fn provider_name(&self) -> &str {
+                "test"
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl StreamingLanguageModel for NeverEndingAfterFinished {
             async fn stream(
                 &self,
                 _request: TextRequest,
@@ -764,14 +881,6 @@ mod tests {
                     })
                     .chain(futures_util::stream::pending()),
                 ))
-            }
-
-            fn model_id(&self) -> &str {
-                "never-ending"
-            }
-
-            fn provider_name(&self) -> &str {
-                "test"
             }
         }
 
@@ -796,5 +905,62 @@ mod tests {
             chunk_text(next.unwrap()).contains("\"type\":\"finish-step\""),
             "expected finish-step after SDK Finished"
         );
+    }
+
+    #[tokio::test]
+    async fn stream_yields_text_before_provider_finishes() {
+        struct PendingAfterDelta;
+
+        #[async_trait::async_trait]
+        impl LanguageModel for PendingAfterDelta {
+            async fn generate(&self, _request: TextRequest) -> Result<TextResult, SdkError> {
+                unimplemented!()
+            }
+
+            fn model_id(&self) -> &str {
+                "pending-after-delta"
+            }
+
+            fn provider_name(&self) -> &str {
+                "test"
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl StreamingLanguageModel for PendingAfterDelta {
+            async fn stream(
+                &self,
+                _request: TextRequest,
+            ) -> Result<crate::core::stream::TextEventStream, SdkError> {
+                Ok(Box::pin(
+                    futures_util::stream::once(async {
+                        Ok(StreamEvent::TextDelta("hello".to_string()))
+                    })
+                    .chain(futures_util::stream::pending()),
+                ))
+            }
+        }
+
+        let stream = stream_text_messages(
+            PendingAfterDelta,
+            TextRequest::prompt("hi"),
+            ToolRegistry::new(),
+            MessageStreamOptions::default(),
+        );
+        futures_util::pin_mut!(stream);
+
+        let _start = stream.next().await.unwrap();
+        let _start_step = stream.next().await.unwrap();
+        let text_start = tokio::time::timeout(std::time::Duration::from_millis(100), stream.next())
+            .await
+            .expect("text-start should arrive before provider completion")
+            .unwrap();
+        let text_delta = tokio::time::timeout(std::time::Duration::from_millis(100), stream.next())
+            .await
+            .expect("text-delta should arrive before provider completion")
+            .unwrap();
+
+        assert!(chunk_text(text_start).contains("\"type\":\"text-start\""));
+        assert!(chunk_text(text_delta).contains("\"delta\":\"hello\""));
     }
 }

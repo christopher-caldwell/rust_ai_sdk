@@ -290,10 +290,10 @@ fn gemini_role(role: &Role) -> &'static str {
 
 fn text_parts(msg: &Message) -> Vec<GeminiPart> {
     msg.effective_parts()
-        .into_iter()
+        .iter()
         .filter_map(|part| match part {
             MessagePart::Text(text) => Some(GeminiPart {
-                text: Some(text),
+                text: Some(text.clone()),
                 function_call: None,
                 function_response: None,
                 thought_signature: None,
@@ -312,20 +312,20 @@ fn message_parts_to_gemini(
     for part in msg.effective_parts() {
         match part {
             MessagePart::Text(text) => parts.push(GeminiPart {
-                text: Some(text),
+                text: Some(text.clone()),
                 function_call: None,
                 function_response: None,
                 thought_signature: None,
             }),
             MessagePart::ToolCall(call) => {
-                let provider_id = gemini_function_call_id(&call);
+                let provider_id = gemini_function_call_id(call);
                 let call_ref = ToolCallRef {
                     id: provider_id.clone(),
                     name: call.name.clone(),
                 };
                 tool_call_refs.insert(call.id.clone(), call_ref.clone());
                 tool_call_refs.insert(provider_id, call_ref);
-                parts.push(tool_call_part(&call));
+                parts.push(tool_call_part(call));
             }
             MessagePart::ToolResult(result) => {
                 let Some(call_ref) = tool_call_refs.get(&result.tool_call_id) else {
@@ -570,7 +570,8 @@ mod tests {
         let request = TextRequest::builder()
             .system("be brief")
             .prompt("hello")
-            .build();
+            .build()
+            .unwrap();
         let body = text_request_to_gemini(&request).unwrap();
         let json = serde_json::to_value(body).unwrap();
 
@@ -700,14 +701,13 @@ mod tests {
         let request = TextRequest::new(vec![
             Message::user("weather"),
             Message::assistant_parts(vec![MessagePart::ToolCall(call)]),
-            Message {
-                role: Role::Tool,
-                content: String::new(),
-                parts: vec![MessagePart::ToolResult(ToolResult::new(
+            Message::from_parts(
+                Role::Tool,
+                vec![MessagePart::ToolResult(ToolResult::new(
                     "sdk_call_1",
                     json!({"forecast": "cloudy"}),
                 ))],
-            },
+            ),
         ]);
 
         let body = text_request_to_gemini(&request).unwrap();
@@ -742,14 +742,13 @@ mod tests {
     #[test]
     fn request_rejects_tool_result_before_prior_tool_call() {
         let request = TextRequest::new(vec![
-            Message {
-                role: Role::Tool,
-                content: String::new(),
-                parts: vec![MessagePart::ToolResult(ToolResult::new(
+            Message::from_parts(
+                Role::Tool,
+                vec![MessagePart::ToolResult(ToolResult::new(
                     "call_1",
                     json!({"forecast": "cloudy"}),
                 ))],
-            },
+            ),
             Message::assistant_parts(vec![MessagePart::ToolCall(ToolCall::new(
                 "call_1",
                 "get_weather",

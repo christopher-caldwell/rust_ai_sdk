@@ -8,8 +8,8 @@ use super::{
     types::{FinishReason, ResponseMetadata, Usage},
 };
 
-/// Provider-neutral streaming event emitted by [`LanguageModel`](crate::core::model::LanguageModel)
-/// implementations.
+/// Provider-neutral streaming event emitted by
+/// [`StreamingLanguageModel`](crate::core::model::StreamingLanguageModel) implementations.
 ///
 /// High-level applications usually consume these through
 /// [`stream_text`](crate::runtime::stream::stream_text), [`run_turn`](crate::runtime::turn::run_turn),
@@ -35,8 +35,11 @@ pub enum StreamEvent {
     /// response id and model name, even when those fields arrived on earlier
     /// chunks.
     Finished {
+        /// Provider-neutral finish reason.
         finish_reason: FinishReason,
+        /// Provider-reported token usage.
         usage: Option<Usage>,
+        /// Provider response metadata accumulated across the stream.
         response: ResponseMetadata,
     },
     /// The provider started a streamed tool call.
@@ -47,8 +50,11 @@ pub enum StreamEvent {
     /// synthetic; runtime adapters normalize empty ids to `tool_call_{index}`
     /// before building continuation messages.
     ToolCallStarted {
+        /// Provider tool-call identifier, possibly empty until normalized.
         id: String,
+        /// Tool name.
         name: String,
+        /// Stable per-turn tool-call index.
         index: u32,
     },
     /// A streamed tool-call argument delta.
@@ -58,8 +64,11 @@ pub enum StreamEvent {
     /// matching [`StreamEvent::ToolCallReady`] event. Providers should emit the
     /// same `index` as the matching start/ready event and the best known `id`.
     ToolCallDelta {
+        /// Provider tool-call identifier, possibly empty.
         id: String,
+        /// Stable per-turn tool-call index.
         index: u32,
+        /// Raw partial JSON argument text.
         input_delta: String,
     },
     /// A complete tool call is ready for runtime accumulation.
@@ -71,10 +80,15 @@ pub enum StreamEvent {
     /// `"malformed_json"` with the raw input and parse error. Runtime tool
     /// execution rejects those malformed calls by default.
     ToolCallReady {
+        /// Provider tool-call identifier, possibly empty until normalized.
         id: String,
+        /// Tool name.
         name: String,
+        /// Stable per-turn tool-call index.
         index: u32,
+        /// Parsed JSON tool input.
         input: Value,
+        /// Provider-owned metadata required for continuation.
         provider_metadata: Option<ProviderMetadata>,
     },
 }

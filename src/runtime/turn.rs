@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::core::{
     error::SdkError,
     message::{Message, MessagePart, ProviderMetadata, ToolCall, ToolOutput},
-    model::LanguageModel,
+    model::StreamingLanguageModel,
     request::TextRequest,
     result::ChatResult,
     stream::StreamEvent,
@@ -20,17 +20,21 @@ pub enum TurnOutcome {
     Completed(ChatResult),
     /// Model emitted one or more tool calls; the caller must execute them.
     ToolsRequired {
+        /// Tool calls ready for application execution.
         tool_calls: Vec<ToolCall>,
         /// All parts of the assistant's turn — needed to build the continuation request.
         assistant_parts: Vec<MessagePart>,
+        /// Provider-neutral finish reason for the assistant turn.
         finish_reason: FinishReason,
+        /// Provider-reported token usage.
         usage: Option<Usage>,
+        /// Provider response metadata.
         response: ResponseMetadata,
     },
 }
 
 /// Run one model turn, accumulate the stream into a `TurnOutcome`.
-pub async fn run_turn<M: LanguageModel + ?Sized>(
+pub async fn run_turn<M: StreamingLanguageModel + ?Sized>(
     model: &M,
     request: TextRequest,
 ) -> Result<TurnOutcome, SdkError> {
@@ -46,7 +50,10 @@ pub async fn run_turn<M: LanguageModel + ?Sized>(
         }
     }
 
-    acc.into_outcome()
+    Err(SdkError::stream_terminated(
+        Some(model.provider_name()),
+        "stream ended before a terminal Finished event",
+    ))
 }
 
 /// Build a continuation request by appending the assistant's turn and tool results.
@@ -55,15 +62,18 @@ pub struct ContinuationBuilder {
 }
 
 impl ContinuationBuilder {
+    /// Start a continuation from the request that produced the tool calls.
     pub fn from_request(request: TextRequest) -> Self {
         Self { request }
     }
 
+    /// Append the structured assistant turn containing tool calls.
     pub fn with_assistant_turn(mut self, parts: Vec<MessagePart>) -> Self {
         self.request.messages.push(Message::assistant_parts(parts));
         self
     }
 
+    /// Append one tool result.
     pub fn with_tool_result(
         mut self,
         tool_call_id: impl Into<String>,
@@ -75,6 +85,7 @@ impl ContinuationBuilder {
         self
     }
 
+    /// Append several tool results in iteration order.
     pub fn with_tool_results<O>(mut self, results: impl IntoIterator<Item = (String, O)>) -> Self
     where
         O: Into<ToolOutput>,
@@ -85,6 +96,7 @@ impl ContinuationBuilder {
         self
     }
 
+    /// Finish the continuation request.
     pub fn build(self) -> TextRequest {
         self.request
     }
@@ -123,6 +135,7 @@ enum PartSlot {
 }
 
 impl TurnAccumulator {
+    /// Apply one provider-neutral event to the accumulated assistant turn.
     pub fn push_event(&mut self, event: StreamEvent) {
         match event {
             StreamEvent::TextDelta(text) => self.push_text(text),
@@ -155,10 +168,11 @@ impl TurnAccumulator {
         }
     }
 
-    pub fn into_accumulated(mut self) -> AccumulatedTurn {
-        let finish_reason = self
-            .finish_reason
-            .unwrap_or(FinishReason::Other("unknown".to_string()));
+    /// Finish accumulation and return the reconstructed assistant turn.
+    pub fn into_accumulated(mut self) -> Result<AccumulatedTurn, SdkError> {
+        let finish_reason = self.finish_reason.ok_or_else(|| {
+            SdkError::stream_terminated(None, "turn has no terminal Finished event")
+        })?;
         let usage = self.usage;
         let response = self.response.unwrap_or(ResponseMetadata {
             id: None,
@@ -182,16 +196,17 @@ impl TurnAccumulator {
             }
         }
 
-        AccumulatedTurn {
+        Ok(AccumulatedTurn {
             parts,
             finish_reason,
             usage,
             response,
-        }
+        })
     }
 
+    /// Convert the accumulated turn into a completed or tools-required outcome.
     pub fn into_outcome(self) -> Result<TurnOutcome, SdkError> {
-        let turn = self.into_accumulated();
+        let turn = self.into_accumulated()?;
         let tool_calls = turn.tool_calls_cloned();
 
         if tool_calls.is_empty() {
@@ -319,13 +334,18 @@ fn tool_call_from_buffer(buf: ToolCallBuffer) -> ToolCall {
 /// A completed assistant turn reconstructed from stream events.
 #[derive(Debug, Clone)]
 pub struct AccumulatedTurn {
+    /// Reconstructed assistant text and tool-call parts in stream order.
     pub parts: Vec<MessagePart>,
+    /// Provider-neutral finish reason.
     pub finish_reason: FinishReason,
+    /// Provider-reported token usage.
     pub usage: Option<Usage>,
+    /// Provider response metadata.
     pub response: ResponseMetadata,
 }
 
 impl AccumulatedTurn {
+    /// Concatenate all text parts.
     pub fn text(&self) -> String {
         self.parts
             .iter()
@@ -340,6 +360,7 @@ impl AccumulatedTurn {
             .join("")
     }
 
+    /// Borrow all tool-call parts.
     pub fn tool_calls(&self) -> Vec<&ToolCall> {
         self.parts
             .iter()
@@ -353,10 +374,12 @@ impl AccumulatedTurn {
             .collect()
     }
 
+    /// Clone all tool calls for application execution.
     pub fn tool_calls_cloned(&self) -> Vec<ToolCall> {
         self.tool_calls().into_iter().cloned().collect()
     }
 
+    /// Return whether the turn contains at least one tool call.
     pub fn has_tool_calls(&self) -> bool {
         self.parts
             .iter()
@@ -371,7 +394,7 @@ impl AccumulatedTurn {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::ResponseMetadata;
+    use crate::core::{model::LanguageModel, types::ResponseMetadata};
     use futures_util::{StreamExt, stream};
 
     fn make_stream(events: Vec<StreamEvent>) -> crate::core::stream::TextEventStream {
@@ -406,20 +429,23 @@ mod tests {
             unimplemented!()
         }
 
-        async fn stream(
-            &self,
-            _request: TextRequest,
-        ) -> Result<crate::core::stream::TextEventStream, SdkError> {
-            let events = self.events.lock().unwrap().take().unwrap_or_default();
-            Ok(make_stream(events))
-        }
-
         fn model_id(&self) -> &str {
             "mock"
         }
 
         fn provider_name(&self) -> &str {
             "mock"
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StreamingLanguageModel for MockModel {
+        async fn stream(
+            &self,
+            _request: TextRequest,
+        ) -> Result<crate::core::stream::TextEventStream, SdkError> {
+            let events = self.events.lock().unwrap().take().unwrap_or_default();
+            Ok(make_stream(events))
         }
     }
 
@@ -474,6 +500,17 @@ mod tests {
                 unimplemented!()
             }
 
+            fn model_id(&self) -> &str {
+                "never-ending"
+            }
+
+            fn provider_name(&self) -> &str {
+                "test"
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl StreamingLanguageModel for NeverEndingAfterFinished {
             async fn stream(
                 &self,
                 _request: TextRequest,
@@ -488,14 +525,6 @@ mod tests {
                     })
                     .chain(stream::pending()),
                 ))
-            }
-
-            fn model_id(&self) -> &str {
-                "never-ending"
-            }
-
-            fn provider_name(&self) -> &str {
-                "test"
             }
         }
 
@@ -653,20 +682,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_run_turn_without_finished_uses_unknown_finish_reason() {
+    async fn test_run_turn_without_finished_returns_error() {
         let model = MockModel::new(vec![StreamEvent::TextDelta("hello".to_string())]);
 
-        let outcome = run_turn(&model, TextRequest::prompt("hi")).await.unwrap();
+        let error = run_turn(&model, TextRequest::prompt("hi"))
+            .await
+            .unwrap_err();
 
-        match outcome {
-            TurnOutcome::Completed(result) => {
-                assert_eq!(result.text(), "hello");
-                assert!(
-                    matches!(result.finish_reason, FinishReason::Other(reason) if reason == "unknown")
-                );
-            }
-            TurnOutcome::ToolsRequired { .. } => panic!("Expected Completed"),
-        }
+        assert!(matches!(error, SdkError::StreamTerminated { .. }));
     }
 
     #[tokio::test]

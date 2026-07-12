@@ -1,6 +1,7 @@
 mod client;
 mod error;
 mod model;
+/// Anthropic model identifiers.
 pub mod models;
 mod types;
 

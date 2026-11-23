@@ -1,4 +1,9 @@
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, sync::Arc};
+
+/// Shared handle to the underlying error that caused an [`SdkError`].
+///
+/// It is reference-counted so that [`SdkError`] stays [`Clone`].
+pub type ErrorSource = Arc<dyn Error + Send + Sync + 'static>;
 
 /// Stable category for HTTP transport failures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,7 +27,16 @@ pub enum TransportErrorKind {
 /// The variants are intentionally provider-neutral. Provider translators map
 /// HTTP, API, serialization, validation, and unexpected failures into this type
 /// so application code can handle errors consistently across providers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// When a failure came from an underlying error (for example a `reqwest` or
+/// `serde_json` error), it is kept and returned by [`Error::source`], so the
+/// root cause (DNS, TLS, proxy, refused connection, malformed JSON) can be
+/// walked through the source chain. [`fmt::Display`] does not print the
+/// source. Equality ignores the source.
+///
+/// [`fmt::Debug`] is not redacted: it prints every field, including any
+/// provider response `body` and the underlying source error.
+#[derive(Debug, Clone)]
 pub enum SdkError {
     /// An HTTP transport or response failure.
     Http {
@@ -36,6 +50,8 @@ pub enum SdkError {
         body: Option<String>,
         /// Stable transport category, when this was a client-side failure.
         transport_kind: Option<TransportErrorKind>,
+        /// Underlying error, when one caused this failure.
+        source: Option<ErrorSource>,
     },
 
     /// A structured error response returned by a provider API.
@@ -60,6 +76,8 @@ pub enum SdkError {
         provider: Option<String>,
         /// Serialization failure summary.
         message: String,
+        /// Underlying error, when one caused this failure.
+        source: Option<ErrorSource>,
     },
 
     /// A stream ended without the provider's terminal event.
@@ -86,6 +104,7 @@ impl SdkError {
             message: message.into(),
             body: None,
             transport_kind: None,
+            source: None,
         }
     }
 
@@ -102,6 +121,7 @@ impl SdkError {
             message: message.into(),
             body,
             transport_kind: None,
+            source: None,
         }
     }
 
@@ -118,6 +138,7 @@ impl SdkError {
             message: message.into(),
             body: None,
             transport_kind: Some(kind),
+            source: None,
         }
     }
 
@@ -157,7 +178,24 @@ impl SdkError {
         Self::Serialization {
             provider: provider.map(ToString::to_string),
             message: message.into(),
+            source: None,
         }
+    }
+
+    /// Attach the underlying error that caused an HTTP or serialization
+    /// failure. Other variants carry no source and are returned unchanged.
+    #[cfg(any(feature = "openai", feature = "anthropic", feature = "gemini"))]
+    pub(crate) fn with_source(mut self, error: impl Error + Send + Sync + 'static) -> Self {
+        match &mut self {
+            Self::Http { source, .. } | Self::Serialization { source, .. } => {
+                *source = Some(Arc::new(error));
+            }
+            Self::Api { .. }
+            | Self::StreamTerminated { .. }
+            | Self::Validation(_)
+            | Self::Unknown(_) => {}
+        }
+        self
     }
 
     /// Build an error for a stream that ended before a terminal event.
@@ -289,7 +327,9 @@ impl fmt::Display for SdkError {
                 write_provider_detail(formatter, "code", code.as_deref())?;
                 write_provider_detail(formatter, "type", error_type.as_deref())
             }
-            Self::Serialization { provider, message } => write_error(
+            Self::Serialization {
+                provider, message, ..
+            } => write_error(
                 formatter,
                 "Serialization error",
                 provider.as_deref(),
@@ -309,7 +349,121 @@ impl fmt::Display for SdkError {
     }
 }
 
-impl Error for SdkError {}
+impl Error for SdkError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Http { source, .. } | Self::Serialization { source, .. } => source
+                .as_deref()
+                .map(|source| source as &(dyn Error + 'static)),
+            Self::Api { .. }
+            | Self::StreamTerminated { .. }
+            | Self::Validation(_)
+            | Self::Unknown(_) => None,
+        }
+    }
+}
+
+/// Compares every field except the underlying error source, which has no
+/// meaningful equality.
+///
+/// The match on `self` is exhaustive and every pattern names all fields, so
+/// adding a variant or a field fails to compile until it is handled here.
+impl PartialEq for SdkError {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            Self::Http {
+                provider,
+                status,
+                message,
+                body,
+                transport_kind,
+                source: _,
+            } => {
+                let Self::Http {
+                    provider: other_provider,
+                    status: other_status,
+                    message: other_message,
+                    body: other_body,
+                    transport_kind: other_transport_kind,
+                    source: _,
+                } = other
+                else {
+                    return false;
+                };
+                provider == other_provider
+                    && status == other_status
+                    && message == other_message
+                    && body == other_body
+                    && transport_kind == other_transport_kind
+            }
+            Self::Api {
+                provider,
+                status,
+                code,
+                error_type,
+                message,
+                body,
+            } => {
+                let Self::Api {
+                    provider: other_provider,
+                    status: other_status,
+                    code: other_code,
+                    error_type: other_error_type,
+                    message: other_message,
+                    body: other_body,
+                } = other
+                else {
+                    return false;
+                };
+                provider == other_provider
+                    && status == other_status
+                    && code == other_code
+                    && error_type == other_error_type
+                    && message == other_message
+                    && body == other_body
+            }
+            Self::Serialization {
+                provider,
+                message,
+                source: _,
+            } => {
+                let Self::Serialization {
+                    provider: other_provider,
+                    message: other_message,
+                    source: _,
+                } = other
+                else {
+                    return false;
+                };
+                provider == other_provider && message == other_message
+            }
+            Self::StreamTerminated { provider, message } => {
+                let Self::StreamTerminated {
+                    provider: other_provider,
+                    message: other_message,
+                } = other
+                else {
+                    return false;
+                };
+                provider == other_provider && message == other_message
+            }
+            Self::Validation(message) => {
+                let Self::Validation(other_message) = other else {
+                    return false;
+                };
+                message == other_message
+            }
+            Self::Unknown(message) => {
+                let Self::Unknown(other_message) = other else {
+                    return false;
+                };
+                message == other_message
+            }
+        }
+    }
+}
+
+impl Eq for SdkError {}
 
 fn write_error(
     formatter: &mut fmt::Formatter<'_>,
@@ -396,6 +550,66 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "API error (Anthropic, HTTP 401): Invalid API key. [code: invalid_api_key] [type: authentication_error]"
+        );
+    }
+
+    // Regression (audit F5): the underlying error is reachable through
+    // `Error::source()`, is not printed by Display, and is ignored by equality.
+    #[test]
+    fn underlying_error_is_exposed_as_source() {
+        use std::io;
+
+        let error = SdkError::Http {
+            provider: Some("OpenAI".to_string()),
+            status: None,
+            message: "error sending request".to_string(),
+            body: None,
+            transport_kind: Some(TransportErrorKind::Connect),
+            source: Some(Arc::new(io::Error::new(
+                io::ErrorKind::ConnectionRefused,
+                "connection refused",
+            ))),
+        };
+
+        let source = error.source().expect("source is kept");
+        assert_eq!(
+            source.downcast_ref::<io::Error>().map(io::Error::kind),
+            Some(io::ErrorKind::ConnectionRefused)
+        );
+        assert!(error.clone().source().is_some());
+        assert_eq!(
+            error.to_string(),
+            "HTTP error (OpenAI): error sending request"
+        );
+
+        let without_source = SdkError::provider_transport(
+            "OpenAI",
+            None,
+            TransportErrorKind::Connect,
+            "error sending request",
+        );
+        assert!(without_source.source().is_none());
+        assert_eq!(error, without_source);
+
+        let serialization = SdkError::Serialization {
+            provider: Some("Gemini".to_string()),
+            message: "expected value".to_string(),
+            source: Some(Arc::new(io::Error::other("expected value"))),
+        };
+        assert!(serialization.source().is_some());
+        assert_eq!(
+            serialization,
+            SdkError::serialization(Some("Gemini"), "expected value")
+        );
+
+        // Equality still distinguishes variants with the same payload.
+        assert_ne!(
+            SdkError::Validation("expected value".to_string()),
+            SdkError::Unknown("expected value".to_string())
+        );
+        assert_ne!(
+            serialization,
+            SdkError::Validation("expected value".to_string())
         );
     }
 

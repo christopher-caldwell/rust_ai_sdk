@@ -13,7 +13,9 @@ impl From<OpenAiClientError> for SdkError {
             OpenAiClientError::Reqwest(e) => {
                 crate::providers::transport::reqwest_error("OpenAI", e)
             }
-            OpenAiClientError::Serde(e) => SdkError::serialization(Some("OpenAI"), e.to_string()),
+            OpenAiClientError::Serde(e) => {
+                SdkError::serialization(Some("OpenAI"), e.to_string()).with_source(e)
+            }
         }
     }
 }

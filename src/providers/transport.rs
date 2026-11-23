@@ -22,6 +22,7 @@ pub(super) fn reqwest_error(provider: &str, error: reqwest::Error) -> SdkError {
         kind,
         error.to_string(),
     )
+    .with_source(error)
 }
 
 pub(super) fn truncate_body(body: &str, max_bytes: usize) -> String {

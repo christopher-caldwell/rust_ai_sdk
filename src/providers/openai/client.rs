@@ -607,6 +607,70 @@ mod tests {
         }
     }
 
+    // Regression (audit F5): the original reqwest error must stay reachable
+    // through `Error::source()`, because reqwest's Display omits the cause
+    // (DNS, TLS, proxy, refused connection).
+    #[tokio::test]
+    async fn connect_failure_preserves_reqwest_source() {
+        use std::error::Error as _;
+
+        // Bind and drop a listener to get a local port that refuses connections.
+        let port = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        // Bypass any proxy configured in the environment so the connect is direct.
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        let client = OpenAiClient::with_config(
+            "key".to_string(),
+            ProviderHttpConfig::new()
+                .with_client(http)
+                .with_base_url(format!("http://127.0.0.1:{port}")),
+        )
+        .unwrap();
+
+        let err = client.generate("gpt-4", &test_request()).await.unwrap_err();
+
+        assert!(err.is_connect(), "{err:?}");
+        let source = err.source().expect("transport error keeps its source");
+        let reqwest_error = source
+            .downcast_ref::<reqwest::Error>()
+            .expect("source is the original reqwest::Error");
+        assert!(reqwest_error.is_connect());
+        assert!(
+            reqwest_error.source().is_some(),
+            "root cause stays on reqwest's own source chain"
+        );
+        // Display is unchanged: the summary only, no source chain appended.
+        assert_eq!(
+            err.to_string(),
+            format!("HTTP error (OpenAI): {reqwest_error}")
+        );
+    }
+
+    // Regression (audit F5): a JSON decode failure keeps the serde_json error.
+    #[tokio::test]
+    async fn invalid_json_response_preserves_serde_source() {
+        use std::error::Error as _;
+
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/chat/completions")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("not json")
+            .create_async()
+            .await;
+
+        let client = OpenAiClient::with_base_url("test-api-key".to_string(), server.url());
+        let err = client.generate("gpt-4", &test_request()).await.unwrap_err();
+
+        mock.assert_async().await;
+        assert!(matches!(err, SdkError::Serialization { .. }), "{err:?}");
+        let source = err.source().expect("serialization error keeps its source");
+        assert!(source.downcast_ref::<serde_json::Error>().is_some());
+    }
+
     // ------------------------------------------------------------------
     // Streaming: setup error
     // ------------------------------------------------------------------

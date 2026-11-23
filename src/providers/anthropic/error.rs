@@ -14,7 +14,7 @@ impl From<AnthropicClientError> for SdkError {
                 crate::providers::transport::reqwest_error("Anthropic", e)
             }
             AnthropicClientError::Serde(e) => {
-                SdkError::serialization(Some("Anthropic"), e.to_string())
+                SdkError::serialization(Some("Anthropic"), e.to_string()).with_source(e)
             }
         }
     }

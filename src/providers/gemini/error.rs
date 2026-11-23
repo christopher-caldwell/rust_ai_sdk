@@ -13,7 +13,9 @@ impl From<GeminiClientError> for SdkError {
             GeminiClientError::Reqwest(e) => {
                 crate::providers::transport::reqwest_error("Gemini", e)
             }
-            GeminiClientError::Serde(e) => SdkError::serialization(Some("Gemini"), e.to_string()),
+            GeminiClientError::Serde(e) => {
+                SdkError::serialization(Some("Gemini"), e.to_string()).with_source(e)
+            }
         }
     }
 }

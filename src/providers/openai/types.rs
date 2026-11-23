@@ -469,6 +469,32 @@ mod tests {
     use crate::core::tool::ToolDefinition;
     use serde_json::json;
 
+    #[cfg(feature = "message-stream")]
+    #[test]
+    fn default_message_stream_options_send_no_temperature_to_gpt5() {
+        use crate::runtime::message_stream::{
+            MessageStreamOptions, MessageStreamRequest, compose_text_request,
+        };
+
+        let ui: MessageStreamRequest = serde_json::from_value(json!({
+            "messages": [{ "role": "user", "parts": [{ "type": "text", "text": "Hello" }] }]
+        }))
+        .unwrap();
+        let request = compose_text_request(
+            ui,
+            "System",
+            MessageStreamOptions::default(),
+            Vec::<ToolDefinition>::new(),
+        )
+        .unwrap();
+
+        let body =
+            serde_json::to_value(text_request_to_openai("gpt-5.4-nano", &request, true)).unwrap();
+
+        assert!(body.get("temperature").is_none());
+        assert_eq!(body["max_completion_tokens"], 800);
+    }
+
     #[test]
     fn test_map_finish_reason() {
         let cases = [

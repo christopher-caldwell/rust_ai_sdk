@@ -78,17 +78,19 @@ fn build_text_request(
     let messages = messages_to_sdk_messages(input, SYSTEM_PROMPT)?;
     let tool_definitions = tools.definitions();
 
-    TextRequest::builder()
+    let mut builder = TextRequest::builder()
         .messages(messages)
         .max_output_tokens(options.max_output_tokens)
-        .temperature(options.temperature)
-        .tools(tool_definitions)
-        .build()
-        .map_err(|error| {
-            another_ai_sdk::runtime::message_stream::MessageStreamInputError::InvalidRequest {
-                message: error.message().to_string(),
-            }
-        })
+        .tools(tool_definitions);
+    if let Some(temperature) = options.temperature {
+        builder = builder.temperature(temperature);
+    }
+
+    builder.build().map_err(|error| {
+        another_ai_sdk::runtime::message_stream::MessageStreamInputError::InvalidRequest {
+            message: error.message().to_string(),
+        }
+    })
 }
 
 fn sse_response<S>(stream: S) -> Response

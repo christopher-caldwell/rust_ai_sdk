@@ -117,7 +117,12 @@ pub struct MessageStreamOptions {
     /// Maximum provider output tokens per model step.
     pub max_output_tokens: u32,
     /// Provider-neutral sampling temperature.
-    pub temperature: f32,
+    ///
+    /// `None` (the default) leaves temperature out of the request, so the
+    /// provider applies its own default. Set `Some(x)` to send one. Some
+    /// models reject or restrict an explicit temperature (for example
+    /// OpenAI's `gpt-5`, `gpt-5-mini` and `gpt-5-nano`).
+    pub temperature: Option<f32>,
     /// Maximum number of independent tool calls executed concurrently.
     pub max_parallel_tools: usize,
 }
@@ -127,7 +132,7 @@ impl Default for MessageStreamOptions {
         Self {
             max_model_steps: 5,
             max_output_tokens: 800,
-            temperature: 0.7,
+            temperature: None,
             max_parallel_tools: 8,
         }
     }
@@ -173,11 +178,15 @@ pub fn compose_text_request(
 ) -> Result<TextRequest, MessageStreamInputError> {
     let messages = messages_to_sdk_messages(request, system_prompt)?;
 
-    TextRequest::builder()
+    let mut builder = TextRequest::builder()
         .messages(messages)
         .max_output_tokens(options.max_output_tokens)
-        .temperature(options.temperature)
-        .tools(tools.into_iter().collect())
+        .tools(tools.into_iter().collect());
+    if let Some(temperature) = options.temperature {
+        builder = builder.temperature(temperature);
+    }
+
+    builder
         .build()
         .map_err(|error| MessageStreamInputError::InvalidRequest {
             message: error.message().to_string(),
@@ -718,7 +727,7 @@ mod tests {
         let options = MessageStreamOptions {
             max_model_steps: 3,
             max_output_tokens: 120,
-            temperature: 0.2,
+            temperature: Some(0.2),
             ..MessageStreamOptions::default()
         };
         let tool = ToolDefinition::new("lookup", "Look something up", json!({"type": "object"}));
@@ -732,6 +741,22 @@ mod tests {
         assert_eq!(text_request.temperature, Some(0.2));
         assert_eq!(text_request.tools.len(), 1);
         assert_eq!(text_request.tools[0].name, "lookup");
+    }
+
+    #[test]
+    fn compose_text_request_with_default_options_sends_no_temperature() {
+        let request: MessageStreamRequest = serde_json::from_value(json!({
+            "messages": [{ "role": "user", "parts": [{ "type": "text", "text": "Hello" }] }]
+        }))
+        .unwrap();
+        let options = MessageStreamOptions::default();
+        assert_eq!(options.temperature, None);
+
+        let text_request =
+            compose_text_request(request, "System", options, Vec::<ToolDefinition>::new()).unwrap();
+
+        assert_eq!(text_request.temperature, None);
+        assert_eq!(text_request.max_output_tokens, Some(800));
     }
 
     #[test]

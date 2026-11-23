@@ -32,6 +32,8 @@ use crate::core::stream::StreamEvent;
 use crate::core::stream::TextEventStream;
 #[cfg(feature = "streaming")]
 use crate::core::types::{FinishReason, ResponseMetadata, Usage as TokenUsage};
+#[cfg(feature = "streaming")]
+use crate::providers::transport::event_stream_error;
 use crate::providers::transport::read_bounded_body;
 #[cfg(feature = "streaming")]
 use eventsource_stream::Eventsource;
@@ -165,10 +167,7 @@ impl AnthropicClient {
                         Some((items, (events, acc, false)))
                     }
                     Some(Err(e)) => {
-                        let items = vec![Err(SdkError::api(format!(
-                            "EventSource stream error: {}",
-                            e
-                        )))];
+                        let items = vec![Err(event_stream_error("Anthropic", e))];
                         Some((items, (events, acc, false)))
                     }
                     None => {
@@ -419,7 +418,14 @@ fn process_event(data: &str, acc: &mut StreamAccumulator) -> Vec<Result<StreamEv
         }
 
         "error" => match serde_json::from_str::<ErrorEvent>(data) {
-            Ok(evt) => vec![Err(SdkError::api(evt.error.message))],
+            Ok(evt) => vec![Err(SdkError::provider_api(
+                "Anthropic",
+                None,
+                None,
+                evt.error.error_type,
+                evt.error.message,
+                None,
+            ))],
             Err(e) => vec![Err(SdkError::from(AnthropicClientError::Serde(e)))],
         },
 
@@ -751,9 +757,136 @@ mod tests {
         }
     }
 
+    /// An in-stream `error` event (e.g. `overloaded_error`, the streaming
+    /// equivalent of HTTP 529) keeps its provider and provider error type.
+    #[cfg(feature = "streaming")]
+    #[test]
+    fn test_process_event_error_keeps_provider_and_type() {
+        let mut acc = StreamAccumulator::default();
+        let result = process_event(
+            r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+            &mut acc,
+        );
+
+        assert_eq!(result.len(), 1);
+        let err = result.into_iter().next().unwrap().unwrap_err();
+        assert!(matches!(err, SdkError::Api { .. }), "{err:?}");
+        assert_eq!(err.provider(), Some("Anthropic"));
+        assert_eq!(err.provider_error_type(), Some("overloaded_error"));
+        assert_eq!(err.message(), "Overloaded");
+    }
+
     // ------------------------------------------------------------------
     // Streaming integration tests
     // ------------------------------------------------------------------
+
+    /// Serve one request: send SSE headers and a single `message_start` event
+    /// in a chunked body, then never send the terminating chunk.
+    ///
+    /// With `wait_for_client`, the connection stays open until the client hangs
+    /// up (bounded by a 30 s read timeout so the thread always ends); otherwise
+    /// it is closed right after the event. Binds an ephemeral port and uses
+    /// `std::net` because the tokio dev-dependency has no `net` feature.
+    #[cfg(feature = "streaming")]
+    fn serve_partial_sse(wait_for_client: bool) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        use std::net::{Shutdown, TcpListener};
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(30)))
+                .unwrap();
+            let mut data = Vec::new();
+            let mut buf = [0u8; 4096];
+            loop {
+                let n = socket.read(&mut buf).unwrap();
+                if n == 0 {
+                    break;
+                }
+                data.extend_from_slice(&buf[..n]);
+                if let Some(pos) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&data[..pos]).to_ascii_lowercase();
+                    let len = head
+                        .lines()
+                        .find_map(|l| l.strip_prefix("content-length:"))
+                        .map(|v| v.trim().parse::<usize>().unwrap())
+                        .unwrap_or(0);
+                    if data.len() >= pos + 4 + len {
+                        break;
+                    }
+                }
+            }
+            let event = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"claude\"}}\n\n";
+            let head = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n";
+            socket.write_all(head.as_bytes()).unwrap();
+            socket
+                .write_all(format!("{:x}\r\n{}\r\n", event.len(), event).as_bytes())
+                .unwrap();
+            socket.flush().unwrap();
+            if wait_for_client {
+                // Returns on EOF, reset or the read timeout.
+                while matches!(socket.read(&mut buf), Ok(n) if n > 0) {}
+            }
+            let _ = socket.shutdown(Shutdown::Both);
+        });
+        (url, handle)
+    }
+
+    #[cfg(feature = "streaming")]
+    async fn first_stream_error(client: &AnthropicClient) -> SdkError {
+        // Headers arrive, so setup succeeds; the failure happens mid-body.
+        let mut stream = client.stream("claude", &test_request()).await.unwrap();
+        while let Some(item) = stream.next().await {
+            if let Err(e) = item {
+                return e;
+            }
+        }
+        panic!("expected a mid-stream error");
+    }
+
+    /// A body read that outlives the client timeout is classified as a
+    /// provider timeout, the same as a timeout before the headers arrive.
+    #[cfg(feature = "streaming")]
+    #[tokio::test]
+    async fn test_stream_mid_body_timeout_is_classified() {
+        // The server never finishes the body, so only the client timeout can
+        // end the stream.
+        let (url, server) = serve_partial_sse(true);
+        let client = AnthropicClient {
+            api_key: "key".to_string(),
+            base_url: url,
+            http: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_millis(500))
+                .build()
+                .unwrap(),
+        };
+
+        let err = first_stream_error(&client).await;
+        drop(client);
+        server.join().unwrap();
+
+        assert!(matches!(err, SdkError::Http { .. }), "{err:?}");
+        assert_eq!(err.provider(), Some("Anthropic"), "{err:?}");
+        assert!(err.is_timeout(), "{err:?}");
+    }
+
+    /// A connection dropped mid-body keeps provider and transport category.
+    #[cfg(feature = "streaming")]
+    #[tokio::test]
+    async fn test_stream_mid_body_disconnect_is_classified() {
+        let (url, server) = serve_partial_sse(false);
+        let client = AnthropicClient::with_base_url("key".to_string(), url);
+
+        let err = first_stream_error(&client).await;
+        server.join().unwrap();
+
+        assert!(matches!(err, SdkError::Http { .. }), "{err:?}");
+        assert_eq!(err.provider(), Some("Anthropic"), "{err:?}");
+        assert!(err.transport_kind().is_some(), "{err:?}");
+    }
 
     #[cfg(feature = "streaming")]
     #[tokio::test]

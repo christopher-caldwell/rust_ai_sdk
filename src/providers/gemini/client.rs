@@ -22,6 +22,8 @@ use crate::core::stream::StreamEvent;
 use crate::core::stream::TextEventStream;
 #[cfg(feature = "streaming")]
 use crate::core::types::{FinishReason, ResponseMetadata, Usage as TokenUsage};
+#[cfg(feature = "streaming")]
+use crate::providers::transport::event_stream_error;
 use crate::providers::transport::read_bounded_body;
 #[cfg(feature = "streaming")]
 use eventsource_stream::Eventsource;
@@ -159,10 +161,7 @@ impl GeminiClient {
                         Some((items, (events, acc, false)))
                     }
                     Some(Err(e)) => {
-                        let items = vec![Err(SdkError::api(format!(
-                            "EventSource stream error: {}",
-                            e
-                        )))];
+                        let items = vec![Err(event_stream_error("Gemini", e))];
                         Some((items, (events, acc, false)))
                     }
                     None => {

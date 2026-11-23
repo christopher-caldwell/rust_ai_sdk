@@ -24,6 +24,27 @@ pub(super) fn reqwest_error(provider: &str, error: reqwest::Error) -> SdkError {
     )
 }
 
+/// Classify an error raised by the SSE layer after the stream has started.
+///
+/// Transport failures (body timeouts, connection resets) are classified exactly
+/// like pre-stream reqwest failures. UTF-8 and SSE framing failures become a
+/// provider transport error with [`TransportErrorKind::Decode`].
+#[cfg(feature = "streaming")]
+pub(super) fn event_stream_error(
+    provider: &str,
+    error: eventsource_stream::EventStreamError<reqwest::Error>,
+) -> SdkError {
+    match error {
+        eventsource_stream::EventStreamError::Transport(e) => reqwest_error(provider, e),
+        other => SdkError::provider_transport(
+            provider,
+            None,
+            TransportErrorKind::Decode,
+            format!("EventSource stream error: {other}"),
+        ),
+    }
+}
+
 pub(super) fn truncate_body(body: &str, max_bytes: usize) -> String {
     if body.len() <= max_bytes {
         return body.to_string();

@@ -377,7 +377,8 @@ fn process_chunk(
         acc.finish_reason = Some(finish_reason.clone());
 
         let ready_tool_calls = drain_tool_calls(acc);
-        if !ready_tool_calls.is_empty() {
+        // Keep a length stop: the tool call arguments may be truncated.
+        if !ready_tool_calls.is_empty() && finish_reason != FinishReason::Length {
             finish_reason = FinishReason::ToolUse;
             acc.finish_reason = Some(finish_reason.clone());
         }
@@ -1066,6 +1067,49 @@ mod tests {
             metadata.as_raw()["another_ai_sdk"]["tool_input"]["state"],
             "malformed_json"
         );
+    }
+
+    #[cfg(feature = "streaming")]
+    #[test]
+    fn test_process_chunk_keeps_length_finish_with_tool_calls() {
+        let mut acc = StreamAccumulator::default();
+        let tool_chunk: ChatCompletionChunk = serde_json::from_value(json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call_cut",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": "{\"location\":\"Par"
+                        }
+                    }]
+                }
+            }]
+        }))
+        .unwrap();
+        let finish_chunk: ChatCompletionChunk = serde_json::from_value(json!({
+            "choices": [{
+                "delta": {},
+                "finish_reason": "length"
+            }]
+        }))
+        .unwrap();
+
+        process_chunk(tool_chunk, &mut acc);
+        let ready_events = process_chunk(finish_chunk, &mut acc);
+
+        assert!(
+            ready_events
+                .iter()
+                .any(|event| matches!(event, Ok(StreamEvent::ToolCallReady { .. })))
+        );
+        assert_eq!(acc.finish_reason, Some(FinishReason::Length));
+        let pending = acc
+            .pending_finished
+            .as_ref()
+            .expect("finish chunk should park a Finished event");
+        assert_eq!(pending.finish_reason, FinishReason::Length);
     }
 
     #[cfg(feature = "streaming")]

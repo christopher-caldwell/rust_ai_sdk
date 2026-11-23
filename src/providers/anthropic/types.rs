@@ -600,4 +600,25 @@ mod tests {
         assert_eq!(calls[0].input["location"], "Paris");
         assert!(matches!(result.finish_reason, FinishReason::ToolUse));
     }
+
+    #[test]
+    fn test_anthropic_response_max_tokens_with_tool_use_reports_length() {
+        let resp = AnthropicResponse {
+            id: Some("msg_cut".to_string()),
+            model: Some("claude".to_string()),
+            content: vec![AnthropicContentBlock {
+                block_type: "tool_use".to_string(),
+                text: None,
+                id: Some("toolu_cut".to_string()),
+                name: Some("get_weather".to_string()),
+                input: Some(serde_json::json!({})),
+            }],
+            stop_reason: Some("max_tokens".to_string()),
+            usage: None,
+        };
+
+        let result = anthropic_response_to_chat_result(resp).unwrap();
+        assert!(result.has_tool_calls());
+        assert_eq!(result.finish_reason, FinishReason::Length);
+    }
 }

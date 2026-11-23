@@ -350,10 +350,15 @@ fn process_stream_response(
             }
         }
 
-        if acc.finish_reason != Some(FinishReason::ToolUse)
-            && let Some(reason) = candidate.finish_reason
-        {
-            acc.finish_reason = Some(map_finish_reason(&reason));
+        if let Some(reason) = candidate.finish_reason {
+            let provider_finish_reason = map_finish_reason(&reason);
+            // A tool call reports `ToolUse`, except that a length stop is kept so
+            // callers can detect a truncated response.
+            if acc.finish_reason != Some(FinishReason::ToolUse)
+                || provider_finish_reason == FinishReason::Length
+            {
+                acc.finish_reason = Some(provider_finish_reason);
+            }
         }
     }
 
@@ -552,6 +557,34 @@ mod tests {
         assert!(saw_delta);
         assert!(saw_ready);
         assert!(matches!(finish_reason.unwrap(), FinishReason::ToolUse));
+    }
+
+    #[cfg(feature = "streaming")]
+    #[test]
+    fn stream_keeps_max_tokens_finish_with_function_call() {
+        let resp: GenerateContentResponse = serde_json::from_str(concat!(
+            "{\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":",
+            "{\"id\":\"call_cut\",\"name\":\"get_weather\",\"args\":{}}}]},",
+            "\"finishReason\":\"MAX_TOKENS\"}]}"
+        ))
+        .unwrap();
+        let mut acc = StreamAccumulator::default();
+
+        let events = process_stream_response(resp, &mut acc);
+
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, Ok(StreamEvent::ToolCallReady { .. })))
+        );
+        let finish_reason = events
+            .into_iter()
+            .find_map(|event| match event.unwrap() {
+                StreamEvent::Finished { finish_reason, .. } => Some(finish_reason),
+                _ => None,
+            })
+            .expect("finish chunk should emit Finished");
+        assert_eq!(finish_reason, FinishReason::Length);
     }
 
     #[cfg(feature = "streaming")]

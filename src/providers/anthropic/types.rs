@@ -323,10 +323,10 @@ pub(super) fn anthropic_response_to_text_result(
 ) -> Result<TextResult, SdkError> {
     let mut text = String::new();
     for block in resp.content {
-        if block.block_type == "text"
-            && let Some(t) = block.text
-        {
-            text.push_str(&t);
+        if block.block_type == "text" {
+            if let Some(t) = block.text {
+                text.push_str(&t);
+            }
         }
     }
 
@@ -363,10 +363,10 @@ pub(super) fn anthropic_response_to_chat_result(
     for block in &resp.content {
         match block.block_type.as_str() {
             "text" => {
-                if let Some(text) = &block.text
-                    && !text.is_empty()
-                {
-                    parts.push(MessagePart::Text(text.clone()));
+                if let Some(text) = &block.text {
+                    if !text.is_empty() {
+                        parts.push(MessagePart::Text(text.clone()));
+                    }
                 }
             }
             "tool_use" => {

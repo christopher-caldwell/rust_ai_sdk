@@ -351,10 +351,10 @@ struct ToolExecutionStep {
 }
 
 fn track_fallback_tool_id(event: &StreamEvent, fallback_tool_ids: &mut VecDeque<String>) {
-    if let StreamEvent::ToolCallReady { id, index, .. } = event
-        && id.is_empty()
-    {
-        fallback_tool_ids.push_back(format!("tool_call_{index}"));
+    if let StreamEvent::ToolCallReady { id, index, .. } = event {
+        if id.is_empty() {
+            fallback_tool_ids.push_back(format!("tool_call_{index}"));
+        }
     }
 }
 

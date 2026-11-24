@@ -27,6 +27,8 @@ use crate::core::stream::StreamEvent;
 use crate::core::stream::TextEventStream;
 #[cfg(feature = "streaming")]
 use crate::core::types::{FinishReason, ResponseMetadata, Usage as TokenUsage};
+#[cfg(feature = "streaming")]
+use crate::providers::transport::event_stream_error;
 use crate::providers::transport::read_bounded_body;
 #[cfg(feature = "streaming")]
 use eventsource_stream::Eventsource;
@@ -186,10 +188,7 @@ impl OpenAiClient {
                         Err(e) => vec![Err(SdkError::from(OpenAiClientError::Serde(e)))],
                     }
                 }
-                Err(e) => vec![Err(SdkError::api(format!(
-                    "EventSource stream error: {}",
-                    e
-                )))],
+                Err(e) => vec![Err(event_stream_error("OpenAI", e))],
             })
             .flat_map(futures_util::stream::iter);
 

@@ -22,6 +22,7 @@ pub(super) fn reqwest_error(provider: &str, error: reqwest::Error) -> SdkError {
         kind,
         error.to_string(),
     )
+    .with_source(error)
 }
 
 /// Classify an error raised by the SSE layer after the stream has started.

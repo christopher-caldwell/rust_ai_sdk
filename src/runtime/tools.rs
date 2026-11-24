@@ -135,13 +135,13 @@ fn validate_input_against_schema(
                 continue;
             };
 
-            if let Some(expected_type) = property_schema.get("type").and_then(Value::as_str)
-                && !json_type_matches(value, expected_type)
-            {
-                return Err(SdkError::Validation(format!(
-                    "tool '{}' field '{field}' must have JSON type {expected_type}",
-                    definition.name,
-                )));
+            if let Some(expected_type) = property_schema.get("type").and_then(Value::as_str) {
+                if !json_type_matches(value, expected_type) {
+                    return Err(SdkError::Validation(format!(
+                        "tool '{}' field '{field}' must have JSON type {expected_type}",
+                        definition.name,
+                    )));
+                }
             }
         }
     }

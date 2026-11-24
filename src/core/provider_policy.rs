@@ -24,11 +24,18 @@ pub fn tool_choice_policy(choice: Option<&ToolChoice>) -> ToolChoicePolicy<'_> {
     }
 }
 
+/// Normalize the provider's finish reason for a response.
+///
+/// Tool calls normally report [`FinishReason::ToolUse`], whatever the provider
+/// said. The exception is [`FinishReason::Length`]: a response cut off by the
+/// output-token limit may end inside a tool call whose input is incomplete, so
+/// the length stop is kept to let callers detect the truncation and retry with
+/// a higher limit.
 pub fn finish_reason_with_tool_override(
     provider_finish_reason: Option<FinishReason>,
     has_tool_calls: bool,
 ) -> FinishReason {
-    if has_tool_calls {
+    if has_tool_calls && provider_finish_reason != Some(FinishReason::Length) {
         return FinishReason::ToolUse;
     }
 
@@ -89,6 +96,20 @@ mod tests {
     #[test]
     fn tool_calls_take_precedence_over_provider_finish_reason() {
         let finish_reason = finish_reason_with_tool_override(Some(FinishReason::Stop), true);
+
+        assert_eq!(finish_reason, FinishReason::ToolUse);
+    }
+
+    #[test]
+    fn length_stop_is_kept_when_tool_calls_are_present() {
+        let finish_reason = finish_reason_with_tool_override(Some(FinishReason::Length), true);
+
+        assert_eq!(finish_reason, FinishReason::Length);
+    }
+
+    #[test]
+    fn missing_provider_finish_reason_with_tool_calls_becomes_tool_use() {
+        let finish_reason = finish_reason_with_tool_override(None, true);
 
         assert_eq!(finish_reason, FinishReason::ToolUse);
     }

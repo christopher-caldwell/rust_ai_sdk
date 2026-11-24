@@ -1108,6 +1108,37 @@ mod tests {
     }
 
     #[cfg(feature = "streaming")]
+    #[test]
+    fn test_stream_max_tokens_inside_tool_use_reports_length() {
+        let mut acc = StreamAccumulator::default();
+        let events = [
+            r#"{"type":"message_start","message":{"id":"msg_cut","model":"claude","usage":{"input_tokens":5}}}"#,
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_cut","name":"get_weather"}}"#,
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"location\":\"Par"}}"#,
+            r#"{"type":"content_block_stop","index":0}"#,
+            r#"{"type":"message_delta","delta":{"stop_reason":"max_tokens"},"usage":{"output_tokens":10}}"#,
+        ];
+        let mut ready = false;
+        for data in events {
+            for item in process_event(data, &mut acc) {
+                if let StreamEvent::ToolCallReady { id, .. } = item.unwrap() {
+                    assert_eq!(id, "toolu_cut");
+                    ready = true;
+                }
+            }
+        }
+        assert!(ready);
+
+        let finished = process_event(r#"{"type":"message_stop"}"#, &mut acc);
+        match finished.into_iter().next().unwrap().unwrap() {
+            StreamEvent::Finished { finish_reason, .. } => {
+                assert_eq!(finish_reason, FinishReason::Length);
+            }
+            other => panic!("expected Finished, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "streaming")]
     #[tokio::test]
     async fn test_stream_mixed_text_and_tool() {
         let mut server = mockito::Server::new_async().await;

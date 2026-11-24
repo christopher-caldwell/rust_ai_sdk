@@ -109,7 +109,7 @@ another-ai-sdk = { version = "0.0.7", features = ["message-stream"] }
   pools with `ProviderHttpConfig` and each provider model's `with_config(...)`
   constructor.
 
-The supported minimum Rust version is 1.85.
+The supported minimum Rust version is 1.86.
 
 ## Validation
 
